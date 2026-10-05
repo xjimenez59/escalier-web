@@ -1,0 +1,9 @@
+# À déployer sur le NAS (Container Station > Applications > Créer, ou `docker compose up -d`).
+# Remplacer GITHUB_UTILISATEUR par ton identifiant GitHub (en minuscules).
+services:
+  escalier:
+    image: ghcr.io/GITHUB_UTILISATEUR/escalier-web:latest
+    container_name: escalier-web
+    restart: unless-stopped
+    ports:
+      - "8087:8000"   # port du NAS vers lequel Caddy renvoie ; à adapter si 8087 est déjà pris

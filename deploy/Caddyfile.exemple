@@ -1,0 +1,14 @@
+# Bloc à ajouter au Caddyfile existant (adapter le nom de domaine et l'adresse du NAS).
+# Si Caddy tourne lui-même dans un conteneur sur le NAS, utiliser l'adresse IP du NAS
+# (ou, si les deux conteneurs partagent un réseau Docker, escalier-web:8000).
+
+escalier.mondomaine.fr {
+	encode gzip
+	reverse_proxy 192.168.1.10:8087
+
+	# Optionnel : réserver l'accès avec un mot de passe.
+	# Générer le hachage avec : caddy hash-password
+	# basic_auth {
+	#	moi $2a$14$....
+	# }
+}

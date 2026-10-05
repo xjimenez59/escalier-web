@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escalier quart tournant : générateur de plans</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <h1>Escalier quart tournant sur crémaillères</h1>
+  <p class="intro">Renseigne les cotes de ta pièce et tes choix de construction : le générateur calcule l'escalier
+  (hauteur de marche, giron, balancement) et produit un PDF avec le plan, la vue en perspective, les fiches de
+  chaque marche, le tracé des crémaillères et la liste de débit. Toutes les cotes sont en centimètres.</p>
+
+  {% if erreurs %}
+  <div class="erreurs" role="alert">
+    <p>Le PDF n'a pas pu être généré :</p>
+    <ul>{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" target="_blank">
+    {% for titre, champs in groupes %}
+    <fieldset>
+      <legend>{{ titre }}</legend>
+      <div class="champs">
+      {% for nom, libelle, typ, a, b, pas, aide in champs %}
+        <label>
+          <span class="lib">{{ libelle }}</span>
+          {% if typ == "choix" %}
+            <select name="{{ nom }}">
+              {% for opt in a %}<option value="{{ opt }}" {% if v[nom] == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}
+            </select>
+          {% else %}
+            <input type="number" name="{{ nom }}" value="{{ v[nom] }}" min="{{ a }}" max="{{ b }}" step="{{ pas }}" inputmode="decimal">
+          {% endif %}
+          {% if aide %}<span class="aide">{{ aide }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    <button type="submit">Générer le PDF</button>
+  </form>
+  <footer>Version {{ version }}</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+:root { --ink:#1f2a36; --muted:#5d6874; --rule:#d5d9dd; --paper:#fbfbf8; --sheet:#fff; --accent:#8a5a2b; --err:#b42318; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#e6e9ec; --muted:#9aa4ae; --rule:#333b44; --paper:#14181d; --sheet:#1b2027; --accent:#d6a36a; --err:#f97066; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+h1 { font-size: 1.8rem; line-height: 1.2; margin: 0 0 .5rem; }
+.intro { color: var(--muted); max-width: 70ch; }
+fieldset { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; margin: 1.25rem 0; padding: 1rem 1.25rem 1.25rem; }
+legend { font-weight: 600; padding: 0 .4rem; }
+.champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 1rem 1.5rem; }
+label { display: flex; flex-direction: column; gap: .25rem; }
+.lib { font-weight: 500; }
+.aide { font-size: .82rem; color: var(--muted); }
+input, select { font: inherit; padding: .45rem .55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { font: inherit; font-weight: 600; padding: .7rem 1.4rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; }
+button:hover { filter: brightness(1.08); }
+.erreurs { border: 1px solid var(--err); color: var(--err); border-radius: 6px; padding: .5rem 1rem; }
+footer { margin-top: 2rem; font-size: .8rem; color: var(--muted); }
