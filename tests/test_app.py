@@ -21,12 +21,28 @@ def test_moteur_valeurs_par_defaut():
 
 
 @pytest.mark.parametrize("args", [[], ["--sens", "gauche"], ["--rive-basse", "decoupee"], ["--fixation-haut", "talon"],
-                                  ["--poteau-hauteur", "200"], ["--balancement", "3", "10"]])
+                                  ["--poteau-hauteur", "200"], ["--balancement", "3", "10"],
+                                  ["--largeur-depart", "80", "--largeur-arrivee", "100"],
+                                  ["--largeur-depart", "100", "--largeur-arrivee", "80"]])
 def test_pdf_genere(args):
     E = escalier.Escalier(escalier.parse_args(args))
     buf = io.BytesIO()
     escalier.build_pdf(E, buf)
     assert buf.getvalue()[:4] == b"%PDF"
+
+
+def test_largeur_arrivee_zero_identique_au_depart():
+    E1 = escalier.Escalier(escalier.parse_args([]))
+    E2 = escalier.Escalier(escalier.parse_args(["--largeur-arrivee", "0"]))
+    assert E1.JRd == E2.JRd == E1.JRa == E2.JRa
+    assert E1.n == E2.n and abs(E1.h - E2.h) < 1e-9
+
+
+def test_largeur_depart_asymetrique():
+    E = escalier.Escalier(escalier.parse_args(["--largeur-depart", "80", "--largeur-arrivee", "100"]))
+    assert E.Wd == 80 and E.Wa == 100
+    assert E.JRd < E.JRa
+    assert E.collet_mini > 0
 
 
 def test_balancement_impossible():

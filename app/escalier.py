@@ -42,7 +42,10 @@ def parse_args(argv=None):
     a("--tremie-largeur", type=float, default=100.0, help="largeur de la trémie, mesurée depuis le mur d'arrivée")
     a("--nb-hauteurs", type=int, default=0, help="nombre de hauteurs de marche (0 = choix automatique selon Blondel)")
     a("--balancement", type=int, nargs=2, default=[3, 11], metavar=("PREMIERE", "DERNIERE"), help="première et dernière marche balancées")
-    a("--largeur-marche", type=float, default=80.0, help="longueur utile des marches, du jeu au mur jusqu'au bord côté jour")
+    a("--largeur-depart", type=float, default=80.0, help="longueur utile des marches de la volée de départ, du jeu au mur jusqu'au bord côté jour")
+    a("--largeur-arrivee", type=float, default=0.0,
+      help="longueur utile des marches de la volée d'arrivée (0 = comme la volée de départ). L'escalier est calculé sur la plus "
+           "grande des deux largeurs, puis le bord côté jour (et le poteau) de la volée la plus étroite est rapproché du mur")
     a("--jeu-mur", type=float, default=0.5, help="jeu entre les marches et les murs")
     a("--debord-jour", type=float, default=2.0, help="débord des marches au-delà de la face arrière des crémaillères intérieures")
     a("--recouvrement", type=float, default=3.0, help="recouvrement d'une marche sur la marche du dessous")
@@ -182,12 +185,18 @@ class Escalier:
         self.alertes = []
         self.left = (P.sens == "gauche")
         self.EP = P.ep_marche; self.TH = P.ep_cremaillere; self.REC = P.recouvrement
-        self.WR = P.jeu_mur; self.JR = self.WR + P.largeur_marche
+        self.WR = P.jeu_mur
+        self.Wd = P.largeur_depart
+        self.Wa = P.largeur_arrivee if P.largeur_arrivee > 0 else P.largeur_depart
+        self.JR = self.WR + max(self.Wd, self.Wa)            # bord côté jour du calcul (plus grande largeur)
+        self.JRd = self.WR + self.Wd; self.JRa = self.WR + self.Wa   # bords côté jour réels de chaque volée
         self.Y0 = P.long_depart; self.XE = P.long_arrivee
         self.WL = self.TH                                  # face côté marches des crémaillères mur
-        self.IN = self.JR - P.debord_jour - self.TH         # face côté marches des crémaillères intérieures
-        self.JX = self.IN + self.TH                         # face arrière (côté vide)
-        self.PO0, self.PO1 = self.JX, self.JX + P.poteau    # poteau côté vide
+        # crémaillères intérieures : x pour la volée de départ, y pour la volée d'arrivée
+        self.INx = self.JRd - P.debord_jour - self.TH; self.JXx = self.INx + self.TH
+        self.INy = self.JRa - P.debord_jour - self.TH; self.JXy = self.INy + self.TH
+        self.PO0x, self.PO1x = self.JXx, self.JXx + P.poteau   # poteau côté vide
+        self.PO0y, self.PO1y = self.JXy, self.JXy + P.poteau
         self.CHEV = P.hauteur - P.plancher                  # dessous du plancher / chevêtre
         self.R = (self.JR - self.WR)/2
         self.A1 = self.Y0 - self.JR; self.arc = math.pi/2*self.R; self.A2 = self.XE - self.JR
@@ -196,6 +205,10 @@ class Escalier:
         self.S = self.A1 + self.arc + self.A2
         self.choisir_hauteurs()
         self.balancer()
+        # giron côté jour mesuré sur les bords réels (après rapprochement du bord de la volée la plus étroite)
+        self.collet = self.girons_jour(); self.collet_mini = min(self.collet)
+        if self.collet_mini < 10:
+            self.alertes.append(f"Giron mini côté jour de {self.collet_mini:.1f} cm (moins de 10 cm) : élargir la zone balancée.")
         self.marches()
         self.cremailleres()
         self.supports()
@@ -203,8 +216,8 @@ class Escalier:
         self.TIGES = []
         if self.ancrage_chevetre('int_haut'):
             m = self.n-1; La = self.P.ancrage
-            self.TREADS[m] = minus_rect(self.TREADS[m], self.XE-La, self.XE+1, self.IN, self.JR+1)
-            self.notes[m].append(f"Entaille de {fr(La)} × {fr(self.JR-self.IN)} cm à l'arrière côté jour, pour le passage de la crémaillère.")
+            self.TREADS[m] = minus_rect(self.TREADS[m], self.XE-La, self.XE+1, self.INy, self.JRa+1)
+            self.notes[m].append(f"Entaille de {fr(La)} × {fr(self.JRa-self.INy)} cm à l'arrière côté jour, pour le passage de la crémaillère.")
             H = self.P.hauteur; c = self.CHEV
             self.TIGES = [c + (H-c)*0.3, c + (H-c)*0.75]
         self.echappee = self.calc_echappee()
@@ -240,7 +253,9 @@ class Escalier:
         return (self.JR+(t-self.A1-self.arc), self.WR+self.R)
 
     def inner(self, u):
-        return (self.JR, self.Y0-u) if u <= self.A1 else (self.JR+(u-self.A1), self.JR)
+        """Point du bord côté jour réel à la distance développée u (depuis le nez de la première marche)."""
+        a1 = self.Y0 - self.JRa
+        return (self.JRd, self.Y0-u) if u <= a1 else (self.JRd+(u-a1), self.JRa)
 
     def outer_from(self, uin, k):
         p = self.inner(uin); q = self.walk(self.s[k]); dx, dy = q[0]-p[0], q[1]-p[1]; c = []
@@ -266,7 +281,12 @@ class Escalier:
         if self.s[a+N] < self.A1 + self.arc - 1e-9:
             raise EscalierErreur(f"Balancement : la marche {m2} se termine avant la fin du tournant ; il faut finir le balancement plus haut.")
         w = [math.sin(math.pi*(j+0.5)/N) for j in range(N)]
-        D = self.arc/sum(w)
+        # déficit de longueur du bord côté jour réel par rapport à la ligne de foulée, absorbé par le balancement
+        self.deficit = self.arc - (self.JR-self.JRa) - (self.JR-self.JRd)
+        if self.deficit <= 0:
+            raise EscalierErreur("Écart de largeur utile entre les deux volées trop grand pour ce tournant : rapprocher les deux largeurs "
+                                 "ou élargir le tournant (rayon de giron plus grand).")
+        D = self.deficit/sum(w)
         G = [self.g]*(n-1)
         for j in range(N): G[a+j] -= D*w[j]
         uu = [0.0]
@@ -281,9 +301,7 @@ class Escalier:
         go = [oo[i+1]-oo[i] for i in range(n-1)]
         if min(go) <= 0: raise EscalierErreur("Balancement impossible : des lignes de nez se croisent côté mur. Élargis la zone balancée.")
         self.giron_mur = go
-        self.collet_mini = min(G); self.mur_maxi = max(go)
-        if self.collet_mini < 10:
-            self.alertes.append(f"Giron mini côté jour de {self.collet_mini:.1f} cm (moins de 10 cm) : élargir la zone balancée.")
+        self.collet_calcul = min(G); self.mur_maxi = max(go)
 
     def line_normal(self, k):
         a, b = self.LINES[k]; dx, dy = b[0]-a[0], b[1]-a[1]; L = math.hypot(dx, dy)
@@ -299,16 +317,15 @@ class Escalier:
     def marches(self):
         n = self.n; self.TREADS = {}; self.notes = {}
         for m in range(1, n):
-            o = self.JR
-            poly = [(self.WR, self.WR), (self.XE, self.WR), (self.XE, o), (o, o), (o, self.Y0), (self.WR, self.Y0)]
+            poly = [(self.WR, self.WR), (self.XE, self.WR), (self.XE, self.JRa), (self.JRd, self.JRa), (self.JRd, self.Y0), (self.WR, self.Y0)]
             p0, nr = self.line_normal(m-1); poly = hp_clip(poly, p0, nr, 0)
             p1, nr1 = self.line_normal(m); back = self.REC if m <= n-2 else 0
             poly = clean(hp_clip(poly, p1, (-nr1[0], -nr1[1]), -back))
             note = []
             # marche dont le nez est sur la volée de départ et qui file le long de la crémaillère haute :
             # on l'arrête contre le poteau
-            if self.LINES[m-1][0][1] > self.JR+1e-6 and max(q[0] for q in poly) > self.PO1+1e-6:
-                poly = clean(hp_clip(poly, (self.PO1, 0), (-1, 0)))
+            if self.jour_hit(m-1)[0] == 'depart' and max(q[0] for q in poly) > self.PO1x+1e-6:
+                poly = clean(hp_clip(poly, (self.PO1x, 0), (-1, 0)))
                 note.append("Bout côté jour coupé d'équerre à l'aplomb de la face du poteau.")
             self.TREADS[m] = poly; self.notes[m] = note
         # marche sur les deux crémaillères mur
@@ -316,6 +333,25 @@ class Escalier:
             if any(abs(q[0]-self.WR) < 1e-6 and q[1] < self.WR+self.TH+1 for q in poly) and \
                any(abs(q[1]-self.WR) < 1e-6 for q in poly):
                 self.notes[m].append("Repose sur les deux crémaillères mur.")
+
+    def jour_hit(self, k):
+        """Point où la ligne de nez k coupe le bord côté jour réel ; renvoie (volée, point, développé le long du bord)."""
+        a, b = self.LINES[k]
+        dx, dy = a[0]-b[0], a[1]-b[1]
+        cands = []
+        if abs(dx) > 1e-9:                      # bord de la volée de départ x = JRd, y >= JRa
+            t = (self.JRd-b[0])/dx; y = b[1]+t*dy
+            if t > 0 and y >= self.JRa-1e-6: cands.append((t, 'depart', (self.JRd, y)))
+        if abs(dy) > 1e-9:                      # bord de la volée d'arrivée y = JRa, x >= JRd
+            t = (self.JRa-b[1])/dy; x = b[0]+t*dx
+            if t > 0 and x >= self.JRd-1e-6: cands.append((t, 'arrivee', (x, self.JRa)))
+        t, cote, pt = min(cands)
+        dev = (self.Y0-pt[1]) if cote == 'depart' else (self.Y0-self.JRa)+(pt[0]-self.JRd)
+        return cote, pt, dev
+
+    def girons_jour(self):
+        devs = [self.jour_hit(k)[2] for k in range(self.n)]
+        return [devs[i+1]-devs[i] for i in range(self.n-1)]
 
     # --- crémaillères
     def palier(self, pt):
@@ -330,12 +366,14 @@ class Escalier:
         m = self.palier(pt); return None if m is None else m*self.h - self.EP
 
     def cremailleres(self):
-        Y0, WL, IN, JX, XE, TH = self.Y0, self.WL, self.IN, self.JX, self.XE, self.TH
+        Y0, WL, XE, TH = self.Y0, self.WL, self.XE, self.TH
+        INx, JXx, INy, JXy = self.INx, self.JXx, self.INy, self.JXy
         self.CR = {
             'mur_dep': dict(face=lambda d: (WL, Y0-d), back=lambda d: (self.WR+1e-3, Y0-d), rng=(0, Y0)),
             'mur_arr': dict(face=lambda d: (WL+(d-(Y0-WL)), WL), back=lambda d: (WL+(d-(Y0-WL)), self.WR+1e-3), rng=(Y0-WL, Y0-WL+XE-WL)),
-            'int_bas': dict(face=lambda d: (IN, Y0-d), back=lambda d: (JX-1e-3, Y0-d), rng=(0, Y0-IN)),
-            'int_haut': dict(face=lambda d: (IN+(d-(Y0-IN)), IN), back=lambda d: (IN+(d-(Y0-IN)), JX-1e-3), rng=(Y0-IN+TH, Y0-IN+XE-IN)),
+            'int_bas': dict(face=lambda d: (INx, Y0-d), back=lambda d: (JXx-1e-3, Y0-d), rng=(0, Y0-INy)),
+            'int_haut': dict(face=lambda d: (INx+(d-(Y0-INy)), INy), back=lambda d: (INx+(d-(Y0-INy)), JXy-1e-3),
+                             rng=(Y0-INy+TH, Y0-INy+XE-INx)),
         }
         self.THR = {'mur_dep': self.P.gorge_mur, 'mur_arr': self.P.gorge_mur, 'int_bas': self.P.gorge_jour, 'int_haut': self.P.gorge_jour}
         self.PAL = {}
@@ -501,17 +539,16 @@ class Escalier:
     def poteau_et_entailles(self):
         P = self.P; self.POT_H = 0.0
         if P.poteau <= 0: return
-        sq = (self.PO0, self.PO1)
         def overlap(poly):
             cp = poly
-            for p0, nrm in (((sq[0], 0), (1, 0)), ((sq[1], 0), (-1, 0)), ((0, sq[0]), (0, 1)), ((0, sq[1]), (0, -1))):
+            for p0, nrm in (((self.PO0x, 0), (1, 0)), ((self.PO1x, 0), (-1, 0)), ((0, self.PO0y), (0, 1)), ((0, self.PO1y), (0, -1))):
                 cp = hp_clip(cp, p0, nrm)
                 if len(cp) < 3: return False
             return abs(area(cp)) > 0.05
         # hauteur nécessaire : dessus des crémaillères intérieures au contact du poteau
         need = 0.0
-        ranges = {'int_bas': (self.Y0-self.PO1, self.Y0-self.PO0),
-                  'int_haut': ((self.Y0-self.IN)+(self.PO0-self.IN), (self.Y0-self.IN)+(self.PO1-self.IN))}
+        ranges = {'int_bas': (self.Y0-self.PO1y, self.Y0-self.PO0y),
+                  'int_haut': ((self.Y0-self.INy)+(self.PO0x-self.INx), (self.Y0-self.INy)+(self.PO1x-self.INx))}
         for k, (d0, d1) in ranges.items():
             for d in frange(d0+0.01, d1-0.01, 0.25):
                 lo, hi = self.body_at(k, d)
@@ -525,7 +562,7 @@ class Escalier:
             if not overlap(poly): continue
             under = m*self.h - self.EP
             if under < self.POT_H - 0.05:
-                self.TREADS[m] = minus_square(poly, self.PO0, self.PO1)
+                self.TREADS[m] = minus_rect(poly, self.PO0x, self.PO1x, self.PO0y, self.PO1y)
                 self.notes[m].append("Entaille au droit du poteau.")
             elif under < self.POT_H + 0.5:
                 self.notes[m].append("Repose en partie sur le dessus du poteau.")
@@ -542,8 +579,8 @@ class Escalier:
         else:
             self.SUP_POLY = [(0, 0), (sw, 0), (sw, interp(chain, (Y0-WL)+sw-WL)), (WL, self.CORNER_Z), (0, self.CORNER_Z)]
         # boulons des crémaillères intérieures sur le poteau
-        c = (self.PO0+self.PO1)/2
-        d_ib = Y0 - c; d_ih = (Y0-self.IN) + (c-self.IN)
+        cx = (self.PO0x+self.PO1x)/2; cy = (self.PO0y+self.PO1y)/2
+        d_ib = Y0 - cy; d_ih = (Y0-self.INy) + (cx-self.INx)
         b1 = self.body_at('int_bas', d_ib); b2 = self.body_at('int_haut', d_ih)
         cand1 = [z for z in frange(math.ceil(b1[0]+4.5), math.floor(b1[1]-4.5), 1.0)]
         cand2 = [z for z in frange(math.ceil(b2[0]+4.5), math.floor(b2[1]-4.5), 1.0)]
@@ -572,12 +609,12 @@ class Escalier:
         def side(Pt, Ln):
             (x1, y1), (x2, y2) = Ln; return (x2-x1)*(Pt[1]-y1)-(y2-y1)*(Pt[0]-x1)
         best = 999.0
-        if Y >= self.JR: return best if Y > self.Y0 else self._echappee_edge(Y, side)
+        if Y > self.Y0: return best
         return self._echappee_edge(Y, side)
 
     def _echappee_edge(self, Y, side):
         best = 999.0; L = self.LINES
-        for x in frange(self.WR+0.5, self.JR-0.5, (self.JR-self.WR-1)/60):
+        for x in frange(self.WR+0.5, self.JRd-0.5, (self.JRd-self.WR-1)/60):
             sd = [side((x, Y), l) for l in L]
             for k in range(self.n-1):
                 if sd[k]*sd[k+1] <= 0:
@@ -606,7 +643,7 @@ class Escalier:
         P_ = [poly[i] for i in idx]
         kinds = [('nez' if self.on_line(P_[i], m-1) and self.on_line(P_[(i+1) % n_], m-1) else 'autre') for i in range(n_)]
         bands = []
-        rects = [(0, self.WL, 0, self.Y0), (self.WL, self.XE, 0, self.WL), (self.IN, self.JX, self.IN, self.Y0), (self.JX, self.XE, self.IN, self.JX)]
+        rects = [(0, self.WL, 0, self.Y0), (self.WL, self.XE, 0, self.WL), (self.INx, self.JXx, self.INy, self.Y0), (self.JXx, self.XE, self.INy, self.JXy)]
         for r in rects:
             cp = self.TREADS[m]
             for p0, nrm in (((r[0], 0), (1, 0)), ((r[1], 0), (-1, 0)), ((0, r[2]), (0, 1)), ((0, r[3]), (0, -1))):
@@ -800,18 +837,18 @@ def scene(E):
         pts = [W(x, y, 0)[:2] for x, y in poly]
         faces += prism_faces(pts, (0, 0, z0), (1, 0, 0), (0, 1, 0), (0, 0, E.EP), TREAD)
     # crémaillères (plans verticaux)
-    Y0, WL, IN, XE, TH = E.Y0, E.WL, E.IN, E.XE, E.TH
+    Y0, WL, XE, TH = E.Y0, E.WL, E.XE, E.TH
     defs = {
         'mur_dep': (W(0, Y0, 0), Wv(0, -1, 0), Wv(1, 0, 0)),
         'mur_arr': (W(WL-(Y0-WL), 0, 0), Wv(1, 0, 0), Wv(0, 1, 0)),
-        'int_bas': (W(IN, Y0, 0), Wv(0, -1, 0), Wv(1, 0, 0)),
-        'int_haut': (W(IN-(Y0-IN), IN, 0), Wv(1, 0, 0), Wv(0, 1, 0)),
+        'int_bas': (W(E.INx, Y0, 0), Wv(0, -1, 0), Wv(1, 0, 0)),
+        'int_haut': (W(E.INx-(Y0-E.INy), E.INy, 0), Wv(1, 0, 0), Wv(0, 1, 0)),
     }
     for k, (O, A, tdir) in defs.items():
         faces += prism_faces(E.OUT[k], O, A, (0, 0, 1), v_mul(tdir, TH), CR)
     # poteau et bastaing de soutien
     if E.P.poteau > 0:
-        sq = [W(E.PO0, E.PO0, 0)[:2], W(E.PO1, E.PO0, 0)[:2], W(E.PO1, E.PO1, 0)[:2], W(E.PO0, E.PO1, 0)[:2]]
+        sq = [W(E.PO0x, E.PO0y, 0)[:2], W(E.PO1x, E.PO0y, 0)[:2], W(E.PO1x, E.PO1y, 0)[:2], W(E.PO0x, E.PO1y, 0)[:2]]
         faces += prism_faces(sq, (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, E.POT_H), POT)
     faces += prism_faces(E.SUP_POLY, W(0, 0, 0), Wv(1, 0, 0), (0, 0, 1), v_mul(Wv(0, 1, 0), WL), CR)
     # plancher d'arrivée autour de la trémie (translucide) et chevêtre
@@ -902,7 +939,7 @@ def build_pdf(E, path):
             ["Pas de Blondel 2h + g", f"{fr(E.blondel, 1)}"],
             ["Ligne de foulée (longueur, distance au mur)", f"{fr(E.S, 1)} ; {fr(E.WR+E.R, 1)}"],
             ["Marches balancées", f"{P.balancement[0]} à {P.balancement[1]}"],
-            ["Giron mini au bord côté jour", f"{fr(E.collet_mini)}"],
+            ["Giron mini côté jour", f"{fr(E.collet_mini)}" + (f" (calc. {fr(E.collet_calcul)})" if abs(E.collet_mini-E.collet_calcul) > 0.05 else "")],
             ["Giron maxi côté mur (développé)", f"{fr(E.mur_maxi)}"],
             ["Échappée sous le bord de la trémie", f"{fr(E.echappee)}"],
             ["Inclinaison moyenne", f"{fr(math.degrees(math.atan(E.h/E.g)), 0)}°"]]
@@ -910,7 +947,7 @@ def build_pdf(E, path):
             ["Sens", sens], ["Hauteur sol à sol", fr(P.hauteur)], ["Épaisseur du plancher", fr(P.plancher)],
             ["Longueur le long du mur de départ", fr(P.long_depart)], ["Longueur le long du mur d'arrivée", fr(P.long_arrivee)],
             ["Trémie (longueur × largeur)", f"{fr(P.long_arrivee)} × {fr(P.tremie_largeur)}"],
-            ["Longueur utile des marches", fr(P.largeur_marche)], ["Jeu au mur / débord côté jour", f"{fr(P.jeu_mur)} / {fr(P.debord_jour)}"],
+            ["Longueur utile, départ / arrivée", f"{fr(E.Wd)} / {fr(E.Wa)}"], ["Jeu au mur / débord côté jour", f"{fr(P.jeu_mur)} / {fr(P.debord_jour)}"],
             ["Recouvrement", fr(P.recouvrement)], ["Épaisseur marches / crémaillères", f"{fr(P.ep_marche)} / {fr(P.ep_cremaillere)}"],
             ["Gorge crémaillères jour / mur", f"{fr(P.gorge_jour)} / {fr(P.gorge_mur)}"], ["Poteau d'angle", f"{fr(P.poteau)} × {fr(P.poteau)}"],
             ["Hauteur du poteau", (f"{fr(E.POT_H)} (automatique)" if getattr(E, 'POT_AUTO', False) else fr(E.POT_H))],
@@ -924,7 +961,13 @@ def build_pdf(E, path):
     story.append(Paragraph(
         f"Les marches (planches de {fr(P.ep_marche)} cm) reposent sur quatre crémaillères de {fr(P.ep_cremaillere)} cm d'épaisseur : deux côté mur, "
         f"plaquées contre les murs et vissées dans les montants, et deux côté jour, boulonnées sur un poteau d'angle placé côté vide. "
-        f"Les marches font {fr(P.largeur_marche)} cm de long, de {fr(P.jeu_mur)} cm du mur jusqu'à leur bord côté jour ; la ligne de foulée passe au milieu. "
+        + (f"Les marches font {fr(E.Wd)} cm de long, de {fr(P.jeu_mur)} cm du mur jusqu'à leur bord côté jour ; la ligne de foulée passe au milieu. "
+         if abs(E.Wd-E.Wa) < 1e-6 else
+         f"Les marches font {fr(E.Wd)} cm de long sur la volée de départ et {fr(E.Wa)} cm sur la volée d'arrivée, depuis {fr(P.jeu_mur)} cm du mur. "
+         f"La ligne de foulée et le giron sont calculés sur la plus grande largeur ({fr(max(E.Wd, E.Wa))} cm, ligne de foulée à "
+         f"{fr(E.WR+E.R)} cm du mur). Le bord côté jour de la volée la plus étroite, ses crémaillères intérieures et le poteau sont rapprochés "
+         f"du mur, et le balancement est réparti le long de ce bord réel : le bord côté jour étant plus court, les marches tournantes y "
+         f"gagnent du giron. ") +
         f"Elles dépassent de {fr(P.debord_jour)} cm la face arrière des crémaillères intérieures, sauf au droit du poteau, et recouvrent de "
         f"{fr(P.recouvrement)} cm la marche du dessous. La première marche déborde de {fr(P.recouvrement)} cm devant les crémaillères.", st['p']))
     story.append(Paragraph(
@@ -938,12 +981,12 @@ def build_pdf(E, path):
     def draw_plan(c, T0, s):
         T = lambda x, y: T0(MX(x), -y)
         line(c, T, (0, E.Y0+8), (0, 0), INK, 1.6); line(c, T, (0, 0), (E.XE+8, 0), INK, 1.6)
-        for r in [(0, 0, E.WL, E.Y0), (E.WL, 0, E.XE, E.WL), (E.IN, E.IN, E.JX, E.Y0), (E.JX, E.IN, E.XE, E.JX)]:
+        for r in [(0, 0, E.WL, E.Y0), (E.WL, 0, E.XE, E.WL), (E.INx, E.INy, E.JXx, E.Y0), (E.JXx, E.INy, E.XE, E.JXy)]:
             poly_path(c, T, [(r[0], r[1]), (r[2], r[1]), (r[2], r[3]), (r[0], r[3])], fill=CREM, stroke=None)
         for m in range(1, E.n):
             poly_path(c, T, E.TREADS[m], fill=WOOD, stroke=INK, width=0.4)
         if P.poteau > 0:
-            poly_path(c, T, [(E.PO0, E.PO0), (E.PO1, E.PO0), (E.PO1, E.PO1), (E.PO0, E.PO1)], fill=colors.HexColor("#8a5a2b"), stroke=None)
+            poly_path(c, T, [(E.PO0x, E.PO0y), (E.PO1x, E.PO0y), (E.PO1x, E.PO1y), (E.PO0x, E.PO1y)], fill=colors.HexColor("#8a5a2b"), stroke=None)
         sw = P.soutien_largeur
         poly_path(c, T, [(0, 0), (sw, 0), (sw, E.WL), (0, E.WL)], stroke=INK, width=0.4, dash=(2, 2))
         poly_path(c, T, [(0, 0), (E.XE, 0), (E.XE, P.tremie_largeur), (0, P.tremie_largeur)], stroke=TRE, width=0.8, dash=(4, 3))
@@ -959,7 +1002,7 @@ def build_pdf(E, path):
         text(c, T, E.XE/2, -14, f"{fr(E.XE, 0)} (mur d'arrivée)", 7, DIM)
         text(c, T, -6, E.Y0/2, fr(E.Y0, 0), 7, DIM, anchor="end" if not E.left else "start")
         text(c, T, E.XE*0.6, P.tremie_largeur+6, f"trémie {fr(E.XE, 0)} × {fr(P.tremie_largeur, 0)}", 7, TRE)
-        if P.poteau > 0: text(c, T, E.PO1+3, E.PO1+5, f"poteau {fr(P.poteau, 0)} × {fr(P.poteau, 0)}", 6.5, MUTED, anchor="start" if not E.left else "end")
+        if P.poteau > 0: text(c, T, E.PO1x+3, E.PO1y+5, f"poteau {fr(P.poteau, 0)} × {fr(P.poteau, 0)}", 6.5, MUTED, anchor="start" if not E.left else "end")
     story.append(Fig(world, draw_plan, W, 150*mm))
     story.append(Paragraph("Vue de dessus. En brun clair, les crémaillères (sous les marches) ; en brun foncé, le poteau d'angle ; "
                            "en pointillé noir, le bastaing de soutien ; en pointillé vert, la trémie.", st['small']))
