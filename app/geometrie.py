@@ -72,7 +72,7 @@ def parse_args(argv=None):
 # ce sont des tolérances de fabrication plutôt que des choix de conception.
 JEU_RAINURE = 0.1   # jeu (cm) sur la largeur de la rainure, pour que le haut du panneau y glisse sans forcer
 JEU_LIMON = 0.1     # jeu (cm) de chaque côté du panneau, vis-à-vis des crémaillères (évite le contact chant-contre-limon)
-MARGE_PERCAGE = 1.5  # retrait (cm) des pré-perçages par rapport au bord de la marche
+MARGE_PERCAGE = 5.0  # retrait (cm) des pré-perçages par rapport au bord de la marche (place pour la visseuse, sans buter contre la crémaillère)
 RECUL_CREMAILLERE = 0.5  # cm, marge au-delà de l'épaisseur de la contremarche (voir contremarches())
 
 def fr(v, d=1):
@@ -728,10 +728,14 @@ class Escalier:
     # --- contremarches
     @staticmethod
     def hole_positions(L):
-        """Deux pré-perçages en retrait de MARGE_PERCAGE des deux bouts d'un segment de longueur L
-        (un seul, au centre, si le segment est trop court pour les deux)."""
+        """Pré-perçages d'un segment de longueur L : deux en retrait de MARGE_PERCAGE des bouts, plus
+        un au milieu (la pointe des chaussures tape souvent le milieu de la contremarche) si la place
+        ne le fait pas trop se rapprocher des deux autres ; un seul au centre si le segment est trop
+        court même pour les deux extrêmes."""
         if L <= 2*MARGE_PERCAGE + 2: return [L/2]
-        return [MARGE_PERCAGE, L-MARGE_PERCAGE]
+        pts = [MARGE_PERCAGE, L-MARGE_PERCAGE]
+        if L/2 - MARGE_PERCAGE > MARGE_PERCAGE/2: pts.insert(1, L/2)
+        return pts
 
     def contremarches(self):
         """Panneaux de contremarches : self.RISERS[i] relie le niveau i (0 = sol) au niveau i+1
