@@ -37,10 +37,13 @@ python -m app.escalier --help      # version ligne de commande
      - Command : `/share/Container/escalier-web/mise-a-jour.sh >> /share/Container/escalier-web/mise-a-jour.log 2>&1`
      - Schedule : `*/10 * * * *`
 
-     Si la tâche échoue avec une erreur « command not found : docker », le PATH de CrontabUI n'inclut pas le
-     binaire de Container Station ; préfixer la commande avec
-     `DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker` (adapter le chemin, vérifiable en SSH
-     avec `which docker`).
+     Si la tâche échoue avec une erreur « command not found : docker », c'est que CrontabUI exécute ses tâches
+     avec un PATH minimal (contrairement à un shell SSH, qui charge le PATH complet via les scripts de profil).
+     Dans CrontabUI, section variables d'environnement (partagées par toutes les tâches), ajouter :
+     ```
+     PATH=/share/CACHEDEV1_DATA/.qpkg/container-station/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/bin/X11:/usr/local/sbin:/usr/local/bin
+     ```
+     (le PATH complet, obtenu en SSH avec `echo $PATH` ; adapter si le chemin de Container Station diffère).
    - **Alternative, sans app supplémentaire** : ajouter la ligne suivante à `/etc/config/crontab` (en SSH, admin),
      puis `crontab /etc/config/crontab && /etc/init.d/crond.sh restart` (ne pas utiliser `crontab -e`, qui serait
      écrasé au redémarrage du NAS) :
