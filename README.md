@@ -31,13 +31,23 @@ python -m app.escalier --help      # version ligne de commande
    Dans `compose.yaml`, remplacer `GITHUB_UTILISATEUR` et, si besoin, le port `8087`.
 2. Démarrer : Container Station → *Applications* → *Créer* (coller le `compose.yaml`), ou en SSH :
    `cd /share/Container/escalier-web && docker compose up -d`.
-3. Mise à jour automatique : ajouter la ligne suivante à `/etc/config/crontab` (en SSH, admin), puis
-   `crontab /etc/config/crontab && /etc/init.d/crond.sh restart` :
-   ```
-   */10 * * * * /share/Container/escalier-web/mise-a-jour.sh >> /share/Container/escalier-web/mise-a-jour.log 2>&1
-   ```
-   Si la commande `docker` n'est pas dans le PATH de cron, la préciser en tête de ligne :
-   `DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker` (adapter le chemin).
+3. Mise à jour automatique, toutes les 10 minutes :
+   - **Avec l'app QPKG CrontabUI** (recommandé, installable depuis [myqnap.org](https://www.myqnap.org/product/crontabui/)) :
+     ajouter une tâche dans son interface web avec :
+     - Command : `/share/Container/escalier-web/mise-a-jour.sh >> /share/Container/escalier-web/mise-a-jour.log 2>&1`
+     - Schedule : `*/10 * * * *`
+
+     Si la tâche échoue avec une erreur « command not found : docker », le PATH de CrontabUI n'inclut pas le
+     binaire de Container Station ; préfixer la commande avec
+     `DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker` (adapter le chemin, vérifiable en SSH
+     avec `which docker`).
+   - **Alternative, sans app supplémentaire** : ajouter la ligne suivante à `/etc/config/crontab` (en SSH, admin),
+     puis `crontab /etc/config/crontab && /etc/init.d/crond.sh restart` (ne pas utiliser `crontab -e`, qui serait
+     écrasé au redémarrage du NAS) :
+     ```
+     */10 * * * * /share/Container/escalier-web/mise-a-jour.sh >> /share/Container/escalier-web/mise-a-jour.log 2>&1
+     ```
+     Même remarque pour le PATH de `docker`, à préciser en tête de ligne si besoin.
 
 ### 3. Caddy
 Ajouter le bloc de `deploy/Caddyfile.exemple` au Caddyfile (nom de domaine, adresse du NAS, mot de passe
