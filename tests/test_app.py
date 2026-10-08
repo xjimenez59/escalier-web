@@ -1,8 +1,10 @@
 import io
+import zipfile
 
 import pytest
 
-from app import escalier
+from app import escalier, export3d
+from app.modele3d import scene, solide
 from app.web import app
 
 
@@ -120,3 +122,66 @@ def test_post_hors_bornes(client):
 
 def test_sante(client):
     assert client.get("/sante").json["etat"] == "ok"
+
+
+def test_get_3d(client):
+    r = client.get("/3d", query_string={"sens": "gauche"})
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "OrbitControls" in body
+    assert '"positions"' in body
+
+
+def test_get_3d_contremarches(client):
+    r = client.get("/3d", query_string={"ep_contremarche": "1.2"})
+    assert r.status_code == 200
+
+
+def test_get_3d_erreur(client):
+    r = client.get("/3d", query_string={"balancement_debut": "8", "balancement_fin": "11"})
+    assert r.status_code == 400
+    assert "balancement" in r.get_data(as_text=True).lower()
+
+
+def test_export3d_zip(client):
+    r = client.get("/export3d.zip", query_string={"sens": "gauche"})
+    assert r.status_code == 200
+    assert r.mimetype == "application/zip"
+    z = zipfile.ZipFile(io.BytesIO(r.get_data()))
+    assert set(z.namelist()) == {"escalier.obj", "escalier.mtl"}
+    obj_text = z.read("escalier.obj").decode("utf-8")
+    assert "mtllib escalier.mtl" in obj_text
+    assert "usemtl" in obj_text
+    assert "\nv " in obj_text
+    assert "\nf " in obj_text
+
+
+def test_export3d_zip_hors_bornes(client):
+    r = client.get("/export3d.zip", query_string={"hauteur": "5000"})
+    assert r.status_code == 400
+
+
+def test_scene_to_threejs_structure():
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2"]))
+    d = export3d.scene_to_threejs(E)
+    assert len(d["positions"]) % 9 == 0   # multiples de 3 sommets * 3 coordonnées
+    assert len(d["positions"]) == len(d["colors"])
+    assert len(d["positions"]) > 0
+
+
+def test_scene_to_obj_materiaux():
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2"]))
+    obj_text, mtl_text = export3d.scene_to_obj(E)
+    assert mtl_text.count("newmtl") >= 2
+    assert obj_text.count("\nf ") > 0
+
+
+def test_solide_sans_subdivision_ni_ecart():
+    """Le modèle exact (visionneuse/export) n'a ni la subdivision ni l'écart EPS_Z propres au
+    rendu PDF : beaucoup moins de faces, et les contremarches vont jusqu'à leur vraie hauteur."""
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2"]))
+    faces_pdf = scene(E)
+    faces_exact = solide(E)
+    assert len(faces_exact) < len(faces_pdf)
+    assert all(len(f) == 4 for f in faces_exact)  # jamais de plancher/chevêtre (slab)
+    assert all(isinstance(f[2], str) and f[2].startswith("#") for f in faces_exact)

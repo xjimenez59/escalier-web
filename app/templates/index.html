@@ -42,6 +42,8 @@
     </fieldset>
     {% endfor %}
     <button type="submit">Générer le PDF</button>
+    <button type="submit" formmethod="get" formaction="/3d" target="_blank">Voir en 3D</button>
+    <button type="submit" formmethod="get" formaction="/export3d.zip" target="_blank">Exporter le modèle 3D (.obj, pour SweetHome3D / SketchUp)</button>
   </form>
   <footer>Version {{ version }}</footer>
 </main>

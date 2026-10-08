@@ -1,11 +1,12 @@
 """Application web : formulaire de paramètres -> PDF des plans de l'escalier."""
 import io
 import os
+import zipfile
 from datetime import datetime
 
 from flask import Flask, render_template, request, send_file
 
-from . import escalier
+from . import escalier, export3d
 
 app = Flask(__name__)
 VERSION = os.environ.get("APP_VERSION", "dev")
@@ -111,6 +112,40 @@ def generer():
     buf.seek(0)
     nom = f"escalier_{P.sens}_{datetime.now():%Y%m%d_%H%M}.pdf"
     return send_file(buf, mimetype="application/pdf", as_attachment=False, download_name=nom)
+
+
+@app.get("/3d")
+def visionneuse3d():
+    P, v, erreurs = lire_formulaire(request.args)
+    if not erreurs:
+        try:
+            E = escalier.Escalier(P)
+        except escalier.EscalierErreur as e:
+            erreurs.append(str(e))
+    if erreurs:
+        return render_template("index.html", groupes=GROUPES, v=v, erreurs=erreurs, version=VERSION), 400
+    donnees = export3d.scene_to_threejs(E)
+    return render_template("visionneuse.html", donnees=donnees, version=VERSION)
+
+
+@app.get("/export3d.zip")
+def export3d_zip():
+    P, v, erreurs = lire_formulaire(request.args)
+    if not erreurs:
+        try:
+            E = escalier.Escalier(P)
+        except escalier.EscalierErreur as e:
+            erreurs.append(str(e))
+    if erreurs:
+        return render_template("index.html", groupes=GROUPES, v=v, erreurs=erreurs, version=VERSION), 400
+    obj_text, mtl_text = export3d.scene_to_obj(E)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("escalier.obj", obj_text)
+        z.writestr("escalier.mtl", mtl_text)
+    buf.seek(0)
+    nom = f"escalier_3d_{P.sens}_{datetime.now():%Y%m%d_%H%M}.zip"
+    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name=nom)
 
 
 @app.get("/sante")

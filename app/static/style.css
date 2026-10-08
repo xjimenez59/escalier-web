@@ -15,7 +15,7 @@ label { display: flex; flex-direction: column; gap: .25rem; }
 .aide { font-size: .82rem; color: var(--muted); }
 input, select { font: inherit; padding: .45rem .55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); }
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-button { font: inherit; font-weight: 600; padding: .7rem 1.4rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; }
+button { font: inherit; font-weight: 600; padding: .7rem 1.4rem; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; margin: .3rem .5rem .3rem 0; }
 button:hover { filter: brightness(1.08); }
 .erreurs { border: 1px solid var(--err); color: var(--err); border-radius: 6px; padding: .5rem 1rem; }
 footer { margin-top: 2rem; font-size: .8rem; color: var(--muted); }

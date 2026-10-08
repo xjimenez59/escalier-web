@@ -104,19 +104,34 @@ def prism_faces(poly2d, O, A, B, Tv, color, edge=True, seg=12.0):
             faces.append(([q0a, q0b, q1b, q1a], nrm, color, edges))
     return faces
 
-def scene(E):
+def pieces3d(E, seg=1e6, eps_z=0.0):
+    """Faces 3D réelles de l'escalier (marches, crémaillères, contremarches, poteau, bastaing de
+    soutien) : liste de (points, normale, couleur_hex, bords_à_tracer). Couleur en chaîne hexa
+    (`"#rrggbb"`) : pas de dépendance à reportlab ici, c'est `scene()` qui la convertit pour le
+    rendu PDF. Ne contient pas le plancher d'arrivée/chevêtre (ajouté séparément par `scene()`,
+    voir plus bas) : ce n'est qu'un repère visuel de mise en situation pour le rendu PDF, avec des
+    marges arbitraires, pas une pièce réelle de l'escalier.
+
+    `seg` : subdivision max (cm) des faces — n'a d'intérêt que pour fiabiliser le tri par
+    profondeur de l'algorithme du peintre du rendu PDF (app/rendu3d.py), sans z-buffer ; sans
+    objet pour un modèle exact (visionneuse 3D interactive, export) — laisser très grand, par
+    défaut (aucune subdivision).
+    `eps_z` : écart (cm) retranché en haut et en bas de chaque panneau de contremarche —
+    sert uniquement à éviter un scintillement dans ce même rendu peintre (faces coïncidentes
+    avec les marches voisines, voir `scene()`) ; laisser à 0, par défaut, pour un modèle exact où
+    le panneau touche vraiment la marche du dessus et celle du dessous."""
     sgx = -1 if E.left else 1
     W = lambda x, y, z: (sgx*x, -y, z)          # plan -> monde (x est, y nord, z haut)
     Wv = lambda x, y, z: (sgx*x, -y, z)         # vecteurs
     faces = []
-    TREAD = colors.HexColor("#d9b98a"); CR = colors.HexColor("#b98a55"); POT = colors.HexColor("#8a5a2b")
+    TREAD = "#d9b98a"; CR = "#b98a55"; POT = "#8a5a2b"; RISER = "#d8d4cb"
     # marches
     for m, poly in E.TREADS.items():
         z0 = m*E.h - E.EP
         pts = [W(x, y, 0)[:2] for x, y in poly]
-        faces += prism_faces(pts, (0, 0, z0), (1, 0, 0), (0, 1, 0), (0, 0, E.EP), TREAD)
+        faces += prism_faces(pts, (0, 0, z0), (1, 0, 0), (0, 1, 0), (0, 0, E.EP), TREAD, seg=seg)
     # crémaillères (plans verticaux)
-    Y0, WL, XE, TH = E.Y0, E.WL, E.XE, E.TH
+    Y0, WL, TH = E.Y0, E.WL, E.TH
     defs = {
         'mur_dep': (W(0, Y0, 0), Wv(0, -1, 0), Wv(1, 0, 0)),
         'mur_arr': (W(WL-(Y0-WL), 0, 0), Wv(1, 0, 0), Wv(0, 1, 0)),
@@ -124,31 +139,43 @@ def scene(E):
         'int_haut': (W(E.INx-(Y0-E.INy), E.INy, 0), Wv(1, 0, 0), Wv(0, 1, 0)),
     }
     for k, (O, A, tdir) in defs.items():
-        faces += prism_faces(E.OUT[k], O, A, (0, 0, 1), v_mul(tdir, TH), CR)
-    # contremarches (panneaux verticaux pleins, partie visible seulement). Haut et bas reculés
-    # d'un cheveu (pas visible) pour ne pas coïncider exactement avec le dessous/dessus des
-    # marches voisines : à profondeur égale, l'algorithme du peintre peut trancher différemment
-    # d'un petit morceau de subdivision à l'autre et scintiller le long du bord (en dents de scie).
-    RISER = colors.HexColor("#d8d4cb"); EPS_Z = 1.0
+        faces += prism_faces(E.OUT[k], O, A, (0, 0, 1), v_mul(tdir, TH), CR, seg=seg)
+    # contremarches (panneaux verticaux pleins, partie visible seulement)
     for r in E.RISERS.values():
         a, b = r['a'], r['b']; Lr = math.dist(a, b)
         if Lr <= 0: continue
-        z_bas, z_haut = r['z_bas']+EPS_Z, r['z_haut']-EPS_Z
+        z_bas, z_haut = r['z_bas']+eps_z, r['z_haut']-eps_z
         if z_haut <= z_bas: continue
         uxr = ((b[0]-a[0])/Lr, (b[1]-a[1])/Lr); nrmr = (-uxr[1], uxr[0])
         rect = [(0, 0), (Lr, 0), (Lr, z_haut-z_bas), (0, z_haut-z_bas)]
         faces += prism_faces(rect, W(a[0], a[1], z_bas), Wv(uxr[0], uxr[1], 0), (0, 0, 1),
-                              v_mul(Wv(nrmr[0], nrmr[1], 0), E.P.ep_contremarche), RISER)
-    # poteau et bastaing de soutien. Le poteau est un prisme simple (carré, pas de contour
-    # non convexe) et une de ses faces touche exactement celle de la crémaillère intérieure
-    # (boulonnées ensemble) : pas de subdivision (seg très large) pour éviter tout conflit de
-    # profondeur avec elle qui ferait disparaître par endroits les faces du poteau.
+                              v_mul(Wv(nrmr[0], nrmr[1], 0), E.P.ep_contremarche), RISER, seg=seg)
+    # poteau et bastaing de soutien. Le poteau est un prisme simple (carré, pas de contour non
+    # convexe) et une de ses faces touche exactement celle de la crémaillère intérieure
+    # (boulonnées ensemble) : jamais de subdivision (seg très large, quel que soit `seg` demandé)
+    # pour éviter tout conflit de profondeur avec elle dans le rendu peintre du PDF, qui ferait
+    # disparaître par endroits les faces du poteau.
     if E.P.poteau > 0:
         sq = [W(E.PO0x, E.PO0y, 0)[:2], W(E.PO1x, E.PO0y, 0)[:2], W(E.PO1x, E.PO1y, 0)[:2], W(E.PO0x, E.PO1y, 0)[:2]]
-        faces += prism_faces(sq, (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, E.POT_H), POT, seg=1000.0)
-    faces += prism_faces(E.SUP_POLY, W(0, 0, 0), Wv(1, 0, 0), (0, 0, 1), v_mul(Wv(0, 1, 0), WL), CR)
-    # plancher d'arrivée autour de la trémie (translucide) et chevêtre
-    SL = colors.HexColor("#9aa4ae"); zc = E.CHEV
+        faces += prism_faces(sq, (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, E.POT_H), POT, seg=max(seg, 1000.0))
+    faces += prism_faces(E.SUP_POLY, W(0, 0, 0), Wv(1, 0, 0), (0, 0, 1), v_mul(Wv(0, 1, 0), WL), CR, seg=seg)
+    return faces
+
+def solide(E):
+    """Modèle exact de l'escalier : les mêmes pièces que `scene()` (voir `pieces3d`), mais sans
+    aucun des compromis propres au rendu peintre du PDF (pas de subdivision, panneaux de
+    contremarche à leur vraie hauteur, pas de plancher/chevêtre - juste l'escalier lui-même).
+    Alimente la visionneuse 3D interactive et l'export de fichiers 3D (voir app/export3d.py)."""
+    return pieces3d(E)
+
+def scene(E):
+    faces = [(pts, nrm, colors.HexColor(col), edge) for pts, nrm, col, edge in pieces3d(E, seg=12.0, eps_z=1.0)]
+    # plancher d'arrivée autour de la trémie (translucide) et chevêtre : simple repère visuel en
+    # perspective pour le PDF (marges arbitraires), pas une pièce réelle de l'escalier - absent
+    # du modèle exact `solide()`.
+    sgx = -1 if E.left else 1
+    W = lambda x, y, z: (sgx*x, -y, z)
+    SL = colors.HexColor("#9aa4ae"); zc = E.CHEV; XE = E.XE
     tl = E.P.tremie_largeur
     for (x0, x1, y0, y1) in [(XE, XE+90, 0, tl+70), (0, XE, tl, tl+70)]:
         sq = [W(x0, y0, 0)[:2], W(x1, y0, 0)[:2], W(x1, y1, 0)[:2], W(x0, y1, 0)[:2]]
