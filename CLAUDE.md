@@ -9,12 +9,17 @@ Projet personnel d'un particulier qui construit l'escalier de son atelier. **On 
 
 ## Organisation du code
 
-- `app/escalier.py` : le moteur, autonome (géométrie + rendu PDF reportlab). Utilisable aussi en ligne de
-  commande : `python -m app.escalier --help`.
+- `app/geometrie.py` : le calcul, sans dépendance (bibliothèque standard seule).
   - `Escalier(P)` calcule tout à partir d'un `argparse.Namespace` (`parse_args([])` donne les valeurs par défaut).
   - Les erreurs de paramètres lèvent `EscalierErreur` (message destiné à l'utilisateur) ; les incohérences
     non bloquantes vont dans `E.alertes`.
-  - `build_pdf(E, chemin_ou_flux)` produit le PDF.
+- `app/pdf.py` : mise en page du PDF (reportlab), `build_pdf(E, chemin_ou_flux)`.
+- `app/modele3d.py` : modèle 3D de l'escalier (`scene(E)`, liste de faces), sans dépendance à reportlab —
+  pourra aussi alimenter une future visionneuse 3D interactive (Three.js) côté navigateur.
+- `app/rendu3d.py` : rendu de la vue 3D dans le PDF (projection + algorithme du peintre), à partir du modèle
+  ci-dessus.
+- `app/escalier.py` : point d'entrée en ligne de commande (`python -m app.escalier --help`) ; réexporte
+  `Escalier`, `parse_args`, `EscalierErreur`, `build_pdf` pour `app/web.py` et les tests.
 - `app/web.py` : formulaire (liste `GROUPES` : nom, libellé, type, bornes, pas, aide) et route POST qui renvoie le PDF.
   Tout nouveau paramètre du moteur doit être ajouté à `parse_args` **et** à `GROUPES`.
 - `tests/` : pytest. Les tests doivent passer avant tout commit (`python -m pytest -q`).

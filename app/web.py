@@ -44,6 +44,11 @@ GROUPES = [
         ("ancrage", "Longueur d'ancrage sur le chevêtre", float, 5, 30, 0.1, ""),
         ("talon", "Longueur du talon (fixation « talon »)", float, 0, 20, 0.1, ""),
     ]),
+    ("Contremarches (optionnel)", [
+        ("ep_contremarche", "Épaisseur des contremarches", float, 0, 3, 0.1, "0 = pas de contremarches."),
+        ("profondeur_rainure", "Profondeur de la rainure", float, 0.2, 2, 0.1,
+         "Dans la face inférieure de la marche du dessus, pour loger le haut de la contremarche."),
+    ]),
 ]
 
 

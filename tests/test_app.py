@@ -23,7 +23,11 @@ def test_moteur_valeurs_par_defaut():
 @pytest.mark.parametrize("args", [[], ["--sens", "gauche"], ["--rive-basse", "decoupee"], ["--fixation-haut", "talon"],
                                   ["--poteau-hauteur", "200"], ["--balancement", "3", "10"],
                                   ["--largeur-depart", "80", "--largeur-arrivee", "100"],
-                                  ["--largeur-depart", "100", "--largeur-arrivee", "80"]])
+                                  ["--largeur-depart", "100", "--largeur-arrivee", "80"],
+                                  ["--ep-contremarche", "1.2"],
+                                  ["--ep-contremarche", "1.2", "--sens", "gauche"],
+                                  ["--ep-contremarche", "1.2", "--largeur-depart", "80", "--largeur-arrivee", "100"],
+                                  ["--ep-contremarche", "1.2", "--poteau", "0"]])
 def test_pdf_genere(args):
     E = escalier.Escalier(escalier.parse_args(args))
     buf = io.BytesIO()
@@ -45,6 +49,41 @@ def test_largeur_depart_asymetrique():
     assert E.collet_mini > 0
 
 
+def test_sans_contremarche_par_defaut():
+    E = escalier.Escalier(escalier.parse_args([]))
+    assert E.RISERS == {}
+
+
+def test_contremarches_une_par_hauteur():
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2"]))
+    assert len(E.RISERS) == E.n
+    # la première (sol) n'a ni rainure ni pré-perçages (tasseaux collés), la dernière (chevêtre) n'a pas de rainure
+    assert not E.RISERS[0]['percage'] and not E.RISERS[0]['rainure']
+    assert E.RISERS[E.n-1]['percage'] and not E.RISERS[E.n-1]['rainure']
+    for i in range(1, E.n-1):
+        assert E.RISERS[i]['percage'] and E.RISERS[i]['rainure']
+    for i in E.RISERS:
+        L, H, Htot, holes = E.riser_local(i)
+        assert L > 0 and H > 0 and Htot >= H
+    # chaque panneau (hors le dernier, contre le chevêtre) est entièrement au-delà du pli des deux
+    # crémaillères qu'il touche : leur bois est plein jusqu'en haut du panneau à cet endroit précis
+    # (vérifié avec `backed`, pas top_at qui peut être trop optimiste près d'un coin), donc appuyé
+    # sur du bois plein plutôt que posé dans le vide.
+    for i in range(E.n - 1):
+        r = E.RISERS[i]
+        p0, nr = E.line_normal(i)
+        back = E.contremarche_offset(i)
+        assert back is not None
+        (_, mur_key), (_, jour_key) = E.riser_pair(p0, nr, back)
+        assert E.backed(mur_key, r['a'], r['z_haut'])
+        assert E.backed(jour_key, r['b'], r['z_haut'])
+
+
+def test_rainure_trop_profonde_alerte():
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2", "--profondeur-rainure", "3", "--ep-marche", "4"]))
+    assert any("rainure" in a.lower() for a in E.alertes)
+
+
 def test_balancement_impossible():
     with pytest.raises(escalier.EscalierErreur):
         escalier.Escalier(escalier.parse_args(["--balancement", "8", "11"]))
@@ -58,6 +97,12 @@ def test_page_formulaire(client):
 
 def test_post_pdf(client):
     r = client.post("/", data={"sens": "gauche", "hauteur": "290"})
+    assert r.status_code == 200
+    assert r.mimetype == "application/pdf"
+
+
+def test_post_pdf_contremarches(client):
+    r = client.post("/", data={"ep_contremarche": "1.2", "profondeur_rainure": "0.8"})
     assert r.status_code == 200
     assert r.mimetype == "application/pdf"
 
