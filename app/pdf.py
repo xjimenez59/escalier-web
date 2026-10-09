@@ -442,6 +442,10 @@ def build_pdf(E, path):
                         text(c, T, p[0]+vx/d*3.5, p[1]+vy/d*3.5, chr(65+i), 6, INK, bold=True)
             fig = Fig(world, draw_tread, W/2-8*mm, 45*mm)
             rows = [["Point", "X", "Y", "Angle"]] + [[chr(65+i), fr(p[0]), fr(p[1]), fr(an[i])+"°"] for i, p in enumerate(Lc)]
+            if groove:
+                rows += [[f"Rainure {i+1}", fr(p[0]), fr(p[1]), ""] for i, p in enumerate(groove)]
+            if holes:
+                rows += [[f"Trou {i+1}", fr(p[0]), fr(p[1]), ""] for i, p in enumerate(holes)]
             note = " ".join(E.notes[m])
             cell = [Paragraph(f"Marche {m}  <font size=7 color='#5d6874'>(dessus à {fr(m*E.h)} cm)</font>", st['h3']), fig, Spacer(1, 2),
                     tbl(rows, size=6.5), Paragraph(f"Planche mini {math.ceil(max(xs)-min(xs))} × {math.ceil(max(ys)-min(ys))}. {note}", st['small'])]

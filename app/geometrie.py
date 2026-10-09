@@ -445,6 +445,99 @@ class Escalier:
         near_mur = (far_mur[0]+dx, far_mur[1]+dy); near_jour = (far_jour[0]+dx, far_jour[1]+dy)
         return near_mur, near_jour, far_mur, far_jour
 
+    def palier_seg(self, key, z):
+        """Segment (d0, d1) du palier de la crémaillère `key` à la hauteur z (self.PAL[key]) -
+        None si elle n'a pas de palier plat à cette hauteur (voir CONCEPTION.md « Bord arrière
+        des marches »)."""
+        for zp, d0, d1 in self.PAL[key]:
+            if abs(zp - z) < 1e-6: return d0, d1
+        return None
+
+    def arete_interieure(self, key, z):
+        """Point où le palier de `key` à la hauteur z rencontre sa face verticale côté marche
+        suivante (coin horizontal/vertical, « arête intérieure » - CONCEPTION.md)."""
+        seg = self.palier_seg(key, z)
+        return None if seg is None else self.CR[key]['face'](seg[1])
+
+    def bord_a(self, point, key, valeur):
+        """`point` avec sa coordonnée fixe (celle de la face de `key`) remplacée par `valeur` :
+        donne le point juste avant la bifurcation à 90°, sur la droite JRd/JRa (côté jour) ou
+        WR (côté mur)."""
+        axe = 0 if key in ('mur_dep', 'int_bas') else 1
+        p = list(point); p[axe] = valeur
+        return tuple(p)
+
+    def face_dir(self, key):
+        """Direction unitaire du développé croissant le long de la face de la crémaillère `key`
+        (toujours un axe pur, x ou y - voir CR)."""
+        a = self.CR[key]['face'](0.0); b = self.CR[key]['face'](1.0)
+        dx, dy = b[0]-a[0], b[1]-a[1]; L = math.hypot(dx, dy)
+        return (dx/L, dy/L)
+
+    def languette_contremarche(self, p3, p4, p5, p6, jour_key, mur_key, ep):
+        """Points 4a,4b,4c,4d du détour de la languette de contremarche entre les points 4 (côté
+        jour) et 5 (côté mur) du tracé arrière (CONCEPTION.md « avec contremarche ») : 4a est
+        dans le prolongement de la droite 3-4, 1 mm après 4 (évite tout contact chant-contre-bois
+        avec la crémaillère jour) ; 4d, par symétrie, dans le prolongement de la droite 6-5, 1 mm
+        après 5 (même principe côté mur) ; le segment 4a-4b est parallèle à la face de la
+        crémaillère jour, sur ep_contremarche + RECUL_CREMAILLERE ; le segment 4c-4d, de la même
+        longueur, est parallèle à la face de la crémaillère mur ; 4b et 4c sont ensuite reliés par
+        une droite directe (pas forcément parallèle à 4-5 : les deux profondeurs priment sur ce
+        parallélisme). None si les deux crémaillères sont trop rapprochées ici."""
+        L = math.dist(p4, p5)
+        if L <= 2*JEU_LIMON + 1: return None
+        d34 = math.dist(p3, p4); d65 = math.dist(p6, p5)
+        if d34 < 1e-6 or d65 < 1e-6: return None
+        dir34 = ((p4[0]-p3[0])/d34, (p4[1]-p3[1])/d34)
+        dir65 = ((p5[0]-p6[0])/d65, (p5[1]-p6[1])/d65)
+        fd_jour = self.face_dir(jour_key)
+        fd_mur = self.face_dir(mur_key)
+        prof = ep + RECUL_CREMAILLERE
+        p4a = (p4[0]+dir34[0]*JEU_LIMON, p4[1]+dir34[1]*JEU_LIMON)
+        p4d = (p5[0]+dir65[0]*JEU_LIMON, p5[1]+dir65[1]*JEU_LIMON)
+        p4b = (p4a[0]+fd_jour[0]*prof, p4a[1]+fd_jour[1]*prof)
+        p4c = (p4d[0]+fd_mur[0]*prof, p4d[1]+fd_mur[1]*prof)
+        return p4a, p4b, p4c, p4d
+
+    def tread_back_path(self, m):
+        """Les 6 points du tracé arrière de la marche m (CONCEPTION.md, « Bord arrière des
+        marches ») : 1 (mur, nez) -> 2 (jour, nez) -> 3 -> 4 (arête intérieure jour) -> 5 (arête
+        intérieure mur) -> 6, prêts à remplacer le segment [1, 2] dans le contour de la marche.
+        None si l'une des deux crémaillères n'a pas de palier à cette hauteur (cas de double
+        contact - pas encore géré, voir marches() qui retombe alors sur l'ancien tracé simple)."""
+        z = m*self.h - self.EP
+        p1 = self.LINES[m][1]   # point 1 : bout mur de la ligne de nez
+        p2 = self.LINES[m][0]   # point 2 : bout jour
+        mur_key = 'mur_dep' if abs(p1[0]-self.WR) < 1e-6 else 'mur_arr'
+        jour_key = 'int_bas' if abs(p2[0]-self.JRd) < 1e-6 else 'int_haut'
+        # près du coin, il arrive que la crémaillère déduite de la position du point 1/2 n'ait pas
+        # encore de palier à cette hauteur, alors qu'elle en aurait un un peu plus loin via l'autre
+        # crémaillère du même côté (cas de double contact) : pas encore résolu correctement (tracé
+        # testé qui laissait un vide ailleurs) - on retombe sur l'ancien tracé simple pour ces
+        # marches-là plutôt que de produire une forme encore fausse.
+        p4 = self.arete_interieure(jour_key, z)
+        p5 = self.arete_interieure(mur_key, z)
+        if p4 is None or p5 is None: return None
+        p3 = self.bord_a(p4, jour_key, self.JRd if jour_key == 'int_bas' else self.JRa)
+        p6 = self.bord_a(p5, mur_key, self.WR)
+        return p1, p2, [p3, p4, p5, p6], mur_key, jour_key
+
+    def splice_back_path(self, poly, p1, nr1, p_mur, p_jour, milieu):
+        """Remplace, dans `poly` (déjà coupé par la ligne de nez précédente), le segment direct
+        entre les points 1 (`p_mur`) et 2 (`p_jour`) par le détour `milieu` (points 3..6 de
+        `tread_back_path`, dans ce sens, éventuellement avec la languette de contremarche
+        insérée entre les points 5 et 6) : coupe d'abord `poly` pile sur la ligne de nez de la
+        marche (LINES[m], sans décalage), ce qui fait apparaître les points 1 et 2 comme deux
+        sommets consécutifs du contour obtenu, puis insère entre eux `milieu` à l'envers (pour
+        refermer le contour dans le bon sens). None si les points 1/2 ne se retrouvent pas tels
+        quels dans ce contour (pas rencontré en pratique à ce stade)."""
+        avant = hp_clip(poly, p1, (-nr1[0], -nr1[1]), 0)
+        n = len(avant)
+        for i in range(n):
+            if math.dist(avant[i], p_mur) < 1e-6 and math.dist(avant[(i+1) % n], p_jour) < 1e-6:
+                return clean(avant[:i+1] + list(reversed(milieu)) + avant[i+1:])
+        return None
+
     # --- marches
     def marches(self):
         n = self.n; self.TREADS = {}; self.notes = {}
@@ -453,23 +546,43 @@ class Escalier:
             poly = self.base_rect()
             p0, nr = self.line_normal(m-1); poly = hp_clip(poly, p0, nr, 0)
             p1, nr1 = self.line_normal(m); back = self.REC if m <= n-2 else 0
-            poly = clean(hp_clip(poly, p1, (-nr1[0], -nr1[1]), -back))
             note = []
-            # languette au-delà du pli de la crémaillère (entre les deux crémaillères uniquement),
-            # jusqu'au décalage où la contremarche m sera posée (contremarche_offset) : sans elle,
-            # la contremarche n'aurait d'appui plein sur aucune des deux crémaillères, le bois plein
-            # ne commençant, côté marche du dessus, qu'à partir de leur pli (voir `backed`).
-            if ep > 0 and m <= n-2:
-                off = self.contremarche_offset(m)
-                if off is None:
-                    note.append("Pas assez de place entre les crémaillères pour prolonger la marche sous la contremarche.")
-                else:
-                    tab = self.tab_ends(m, back, off, JEU_LIMON)
-                    if tab is not None:
-                        near_mur, near_jour, far_mur, far_jour = tab
-                        poly = add_tab(poly, near_mur, near_jour, far_mur, far_jour)
+            chemin = self.tread_back_path(m)
+            spliced = None
+            if chemin is not None:
+                p_mur, p_jour, milieu, mur_key, jour_key = chemin
+                # languette au-delà du pli de chaque crémaillère (entre les deux crémaillères
+                # uniquement), remplaçant la diagonale directe 4->5 : sans elle, la contremarche
+                # n'aurait d'appui plein sur aucune des deux crémaillères, le bois plein ne
+                # commençant, côté marche du dessus, qu'à partir de leur pli.
+                if ep > 0 and m <= n-2:
+                    p3, p4, p5, p6 = milieu
+                    lang = self.languette_contremarche(p3, p4, p5, p6, jour_key, mur_key, ep)
+                    if lang is not None:
+                        p4a, p4b, p4c, p4d = lang
+                        milieu = [p3, p4, p4a, p4b, p4c, p4d, p5, p6]
                     else:
                         note.append("Pas assez de place entre les crémaillères pour prolonger la marche sous la contremarche.")
+                spliced = self.splice_back_path(poly, p1, nr1, p_mur, p_jour, milieu)
+            if spliced is not None:
+                poly = spliced
+            else:
+                # cas non géré par tread_back_path (double contact) ou point 1/2 introuvable dans
+                # le contour : ancien tracé simple (diagonale à profondeur constante), avec
+                # l'ancienne méthode de languette (contremarche_offset/tab_ends, par recherche).
+                note = []
+                poly = clean(hp_clip(poly, p1, (-nr1[0], -nr1[1]), -back))
+                if ep > 0 and m <= n-2:
+                    off = self.contremarche_offset(m)
+                    if off is None:
+                        note.append("Pas assez de place entre les crémaillères pour prolonger la marche sous la contremarche.")
+                    else:
+                        tab = self.tab_ends(m, back, off, JEU_LIMON)
+                        if tab is not None:
+                            near_mur, near_jour, far_mur, far_jour = tab
+                            poly = add_tab(poly, near_mur, near_jour, far_mur, far_jour)
+                        else:
+                            note.append("Pas assez de place entre les crémaillères pour prolonger la marche sous la contremarche.")
             # marche dont le nez est sur la volée de départ et qui file le long de la crémaillère haute :
             # on l'arrête contre le poteau - mais seulement si le poteau porte encore à cette hauteur
             # (son dessus, self.POT_H, peut être plus bas que le dessus de cette marche : au-delà,
@@ -756,22 +869,38 @@ class Escalier:
         n = self.n
         ep = P.ep_contremarche
         for i in range(n):
-            if i <= n-2:
-                back = self.contremarche_offset(i)
+            a = b = a_in = b_in = None
+            if 1 <= i <= n-2:
+                # pose sur la languette de la marche i (tread_back_path/languette_contremarche,
+                # voir marches()) : reprend exactement les mêmes points 4b (jour) / 4c (mur), pour
+                # que le panneau touche réellement le plat de la languette, pas une position
+                # recalculée indépendamment qui pourrait légèrement différer près d'un coin.
+                chemin = self.tread_back_path(i)
+                if chemin is not None:
+                    p_mur, p_jour, milieu, mur_key, jour_key = chemin
+                    p3, p4, p5, p6 = milieu
+                    lang = self.languette_contremarche(p3, p4, p5, p6, jour_key, mur_key, ep)
+                    if lang is not None:
+                        p4a, p4b, p4c, p4d = lang
+                        b, a = p4b, p4c         # b = côté jour, a = côté mur (comme riser_pair)
+                        b_in, a_in = p4a, p4d   # mêmes côtés, mais sur l'arête intérieure (4a/4d)
+            if a is None:
+                # repli (marches 0 et n-1, non couvertes par tread_back_path, ou cas de double
+                # contact non géré) : ancienne méthode par recherche.
+                back = self.contremarche_offset(i) if i <= n-2 else 0.0
                 if back is None: continue
-            else:
-                back = 0.0
-            p0, nr = self.line_normal(i)
-            seg = self.riser_pair(p0, nr, back)
-            if seg is None: continue
-            (mur, _), (jour, _) = seg
-            a, b = mur, jour; L = math.dist(a, b)
-            if L <= 2*JEU_LIMON + 1: continue
-            ux = ((b[0]-a[0])/L, (b[1]-a[1])/L)
-            a = (a[0]+ux[0]*JEU_LIMON, a[1]+ux[1]*JEU_LIMON); b = (b[0]-ux[0]*JEU_LIMON, b[1]-ux[1]*JEU_LIMON)
+                p0, nr = self.line_normal(i)
+                seg = self.riser_pair(p0, nr, back)
+                if seg is None: continue
+                (mur, _), (jour, _) = seg
+                a, b = mur, jour; L = math.dist(a, b)
+                if L <= 2*JEU_LIMON + 1: continue
+                a_in, b_in = a, b   # pas d'arête intérieure distincte ici (repli)
+                ux = ((b[0]-a[0])/L, (b[1]-a[1])/L)
+                a = (a[0]+ux[0]*JEU_LIMON, a[1]+ux[1]*JEU_LIMON); b = (b[0]-ux[0]*JEU_LIMON, b[1]-ux[1]*JEU_LIMON)
             z_bas = i*self.h if i >= 1 else 0.0
             z_haut = (i+1)*self.h - self.EP if i+1 <= n-1 else self.P.hauteur
-            self.RISERS[i] = dict(a=a, b=b, z_bas=z_bas, z_haut=z_haut,
+            self.RISERS[i] = dict(a=a, b=b, a_in=a_in, b_in=b_in, z_bas=z_bas, z_haut=z_haut,
                                   rainure=(1 <= i <= n-2), percage=(i >= 1))
         missing = [i for i in range(n) if i not in self.RISERS]
         if missing:
@@ -896,8 +1025,19 @@ class Escalier:
                 for off in self.hole_positions(La):
                     t = off/La
                     wp = (ra['a'][0]+(ra['b'][0]-ra['a'][0])*t, ra['a'][1]+(ra['b'][1]-ra['a'][1])*t)
+                    # recule de la moitié de l'épaisseur de la contremarche vers l'arête intérieure
+                    # de la languette (a_in/b_in) : le panneau occupe, en profondeur, l'intervalle
+                    # [RECUL_CREMAILLERE, RECUL_CREMAILLERE + ep_contremarche] depuis le pli (son
+                    # arête avant est à l'arête extérieure de la languette, a/b) - la vis doit être
+                    # centrée sur cette épaisseur, pas collée à l'arête extérieure.
+                    wp_in = (ra['a_in'][0]+(ra['b_in'][0]-ra['a_in'][0])*t, ra['a_in'][1]+(ra['b_in'][1]-ra['a_in'][1])*t)
+                    dx, dy = wp_in[0]-wp[0], wp_in[1]-wp[1]
+                    dL = math.hypot(dx, dy)
+                    marge = self.P.ep_contremarche/2
+                    if dL > marge:
+                        wp = (wp[0]+dx/dL*marge, wp[1]+dy/dL*marge)
                     hx, hy = tf(wp)
-                    holes.append((min(max(hx, 0.0), L), hy))
+                    holes.append((hx, hy))
         if self.left:
             # miroir : l'extrémité gauche du nez est alors côté jour
             xs_nose = [pts[i][0] for i in range(n_) if self.on_line(P_[i], m-1)]

@@ -124,7 +124,7 @@ def pieces3d(E, seg=1e6, eps_z=0.0):
     W = lambda x, y, z: (sgx*x, -y, z)          # plan -> monde (x est, y nord, z haut)
     Wv = lambda x, y, z: (sgx*x, -y, z)         # vecteurs
     faces = []
-    TREAD = "#d9b98a"; CR = "#b98a55"; POT = "#8a5a2b"; RISER = "#d8d4cb"
+    TREAD = "#d9b98a"; CR = "#b98a55"; POT = "#8a5a2b"; RISER = "#4a4d52"
     # marches
     for m, poly in E.TREADS.items():
         z0 = m*E.h - E.EP
