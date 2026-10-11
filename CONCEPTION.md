@@ -25,136 +25,113 @@ session) en gardant la trace des alternatives écartées et du pourquoi.
 
 ## Bord arrière des marches (tracé exact)
 
-Le bord arrière d'une marche balancée (celui qui n'est pas le nez) ne peut pas être une simple
-ligne droite à profondeur constante : il doit épouser le profil réel en zigzag de chaque
-crémaillère (palier + face de contremarche), sans quoi un triangle de bois manque près de chaque
-crémaillère (la diagonale simple mord dans l'épaisseur côté mur et déborde dans le vide côté
-jour). Le tracé ci-dessous, point par point, a été établi avec l'utilisateur en reprenant
-précisément sa géométrie ; **non encore implémenté** (voir *Écarté* plus bas pour la tentative
-d'une version précédente, erronée). Repère : voir `CLAUDE.md` (plan interne, toujours calculé
-comme un tournant à droite).
+Le bord arrière d'une marche balancée ne peut pas être une simple ligne droite à profondeur
+constante : il doit épouser le profil réel en zigzag des crémaillères (palier puis remontée vers
+la marche suivante), sans quoi un triangle de bois manque près de chaque crémaillère. La
+définition ci-dessous a été établie avec l'utilisateur en octobre 2026 ; elle remplace une
+version précédente (point de départ mal défini, variantes « double contact » décrites au cas par
+cas) qui avait montré ses limites. Repère : voir `CLAUDE.md` (plan interne, toujours calculé
+comme un tournant à droite ; un escalier à gauche est dessiné en miroir).
 
-Schéma de principe (non à l'échelle, angles non représentatifs — la crémaillère « mur » et la
-crémaillère « vide » peuvent être à n'importe quel angle l'une de l'autre et par rapport à la
-ligne de nez) :
+### Vocabulaire
 
-```
-                     1 ─────────────── ligne de nez ─────────────── 2
-                     │        (balancement, cf. CLAUDE.md)          │
-                     │                                              │
-          crémaillère│                                              │crémaillère
-            "mur"    │                                              │  "vide"
-                     │                                              3
-                     │                                              │  (a) parallèle à la
-                     │                                              │      crémaillère vide
-                     │                                              4  (b) ↳ arête intérieure
-                     │                                             ╱       (perpendiculaire)
-                     │                                            ╱
-                     │                       (c) droite directe  ╱
-                     │                        (même hauteur z)  ╱
-                     │                                         5   arête intérieure,
-                     6 ───────────────────────────────────────┘    crémaillère mur
-                     │   (d) ↑ perpendiculaire, arrêtée 5 mm
-                     │       avant l'arête extérieure crémaillère mur
-                     │
-                     └──(e) retour direct au point 1, ferme le contour
-```
+- **Arête extérieure** d'une crémaillère : le bord de sa face arrière (côté opposé aux marches —
+  `JXx`/`JXy` pour les crémaillères intérieures, le mur pour les crémaillères mur).
+- **Arête intérieure** : le bord de sa face côté marches (`INx`/`INy`, `WL`).
+- **Chant** : le bout d'une crémaillère, sur son épaisseur (TH), perpendiculaire à ses faces.
+- **Arête horizontale** : arête au niveau d'un palier (on la suit). **Arête verticale** (ou
+  montante) : arête d'une remontée du profil vers la marche suivante (on s'y arrête).
 
-1. **Point de départ** : bout « mur » de la ligne de nez de la marche (`LINES[m][1]`, à 5 mm du
-   mur, `x = WR` ou `y = WR`).
-2. Bout « jour » de la même ligne de nez (`LINES[m][0]`, sur la droite fixe `x = JRd` ou
-   `y = JRa` — c'est-à-dire `debord_jour` au-delà de l'arête arrière de la crémaillère intérieure,
-   mesuré perpendiculairement à celle-ci, quel que soit l'angle de la ligne de nez).
-3. **(a)** De là, la ligne suit une **parallèle à la crémaillère « vide »** (le long de son
-   développé, à `x` ou `y` constant = celui du point 2) jusqu'à l'abscisse développée où le
-   profil réel de cette crémaillère (son vrai tracé en zigzag, `OUT[key]`/`d_along`) remonte pour
-   la contremarche suivante — pas une simple droite à profondeur fixe.
-4. **(b)** Bifurque à 90° (perpendiculaire à la crémaillère, donc le long de cette face de
-   contremarche prolongée) jusqu'à l'**arête intérieure** de la crémaillère vide (`INx`/`INy` —
-   celle qui reçoit vraiment la marche, pas `JXx`/`JXy`, sa face arrière).
-5. **(c)** Droite directe jusqu'à l'**arête intérieure de la crémaillère mur** (`WL`), au point
-   situé à la **même hauteur `z`** sur le profil de cette crémaillère.
-6. **(d)** Bifurque à 90°, perpendiculaire à la crémaillère mur, vers son arête extérieure (côté
-   mur réel) — mais s'arrête à 5 mm avant de l'atteindre (même jeu qu'au point 1).
-7. **(e)** Rejoint directement le point 1, fermant le contour.
+### Algorithme (le même pour toutes les marches)
 
-### Variante : marche au contact des deux crémaillères « mur »
+On raisonne d'abord **sans aucun débord ni jeu** (`debord_jour`, `jeu_mur`, jeux de montage en
+dur : tout à zéro), puis on les applique à la fin.
 
-Près de l'angle, la crémaillère de départ va jusqu'au mur d'arrivée et la crémaillère d'arrivée
-bute contre sa face (voir plus bas) ; une marche à cheval dessus doit contourner le coin plutôt
-que fermer directement du point 6 au point 1 :
+1. **Points 1 et 2** : les deux bouts de la **ligne de nez de la marche elle-même** (pour la marche
+   m, `LINES[m-1]`) — 1 côté mur, 2 côté jour. Ce sont les seuls points connus d'emblée.
+2. **Points 6 et 3** : depuis le point 1 (resp. 2), suivre les **arêtes horizontales extérieures**
+   jusqu'à rencontrer la première **arête verticale extérieure** ; c'est le point 6 (resp. 3).
+   Priorité à la prolongation directe ; on ne bifurque (sur un chant, ou sur l'arête d'une autre
+   crémaillère) que s'il n'y a pas de prolongation possible. Pas besoin de savoir à l'avance
+   quelle crémaillère est « basse » ou « haute » ; quatre enchaînements sont possibles :
+   1. départ > arête > arrivée — cas simple, le plus courant ;
+   2. départ > arête > arête > arrivée — la crémaillère basse est collée à la face extérieure de
+      la haute (cas de l'angle mur : la crémaillère d'arrivée bute contre celle de départ) ;
+   3. départ > arête > chant > arrivée — la haute est collée à la face extérieure de la basse, et
+      démarre par une montée ;
+   4. départ > arête > chant > arête > arrivée — même chose, mais la haute démarre par un palier.
+3. **Points 5 et 4** : depuis le point 6 (resp. 3), **traverser l'épaisseur** de la crémaillère
+   (perpendiculairement à ses faces) jusqu'à son arête intérieure.
+4. **Fermeture** : droite directe du point 4 au point 5, à la même hauteur.
+5. **Débords** : on applique ensuite le débord côté jour (`debord_jour`, la marche dépasse de
+   l'arête extérieure des crémaillères intérieures) et le jeu côté mur (`jeu_mur`, la marche
+   s'arrête avant le mur).
+6. **Languette** (si contremarche) : remplace la droite 4→5, voir ci-dessous.
 
-```
-      5                                          5
-      │                                          │
-      6 ── retour direct au point 1               6 ── 6bis ── retour au point 1
- (-5mm arête extérieure                      (parallèle à la 1ère         (perpendiculaire,
-  crémaillère mur)                            crémaillère -arrivée-,       vers le point 1)
-                                               jusqu'à -5mm de l'arête
-                                               extérieure de la 2nde
-                                               -départ-)
-```
+Exception : la **dernière marche** n'a pas d'arête montante au-dessus d'elle (pas de marche
+suivante) ; son arrière est fixé par le chevêtre.
 
-### Variante : marche au contact des deux crémaillères « vide »
+Exemple vérifié (marche 5 de la configuration « gauche, 249 / 200 / 255, trémie 300, largeurs
+80 et 100 ») : côté jour, depuis le bout du nez sur l'arête extérieure d'`int_bas`, on longe
+celle-ci jusqu'au coin, puis l'arête extérieure d'`int_haut` jusqu'à sa remontée (enchaînement
+2 — c'est l'angle rentrant G de la fiche). Côté mur de la marche 6, même chose le long du mur de
+départ puis du mur d'arrivée.
 
-Symétriquement, pour le segment 2→3 (parallèle à la crémaillère vide) :
+### Languette de contremarche
 
-```
- 2                                            2
- │                                            │
- │ parallèle à la crémaillère vide            │ parallèle à la 1ère crémaillère vide
- │ jusqu'à l'abscisse de la                   │ jusqu'au coin où les deux crémaillères vide
- │ prochaine contremarche                     │ se rejoignent (= 3bis, même coin que celui
- │                                            │ utilisé pour la hauteur du poteau)
- 3                                            3bis
-                                               │ parallèle à la 2nde crémaillère vide,
-                                               │ jusqu'à l'abscisse de la prochaine
-                                               │ contremarche
-                                               3
-```
+Entre les points 4 et 5, pour que le panneau reculé au-delà du pli garde un appui plein :
 
-### Variante : avec contremarche (languette)
+- 4a : dans le prolongement de 3→4, à 1 mm au-delà de 4 (`JEU_LIMON`) ; 4d : de même dans le
+  prolongement de 6→5.
+- 4a→4b parallèle à la face de la crémaillère jour, 4d→4c parallèle à celle de la crémaillère
+  mur, chacun sur `ep_contremarche + RECUL_CREMAILLERE` ; les deux profondeurs sont
+  **indépendantes**, et chacune n'est réduite que si le bois plein manque réellement à cet endroit
+  (vérifié avec `backed`, à la hauteur de la marche) — en pratique jamais, le profil de la
+  crémaillère continuant de monter au-delà du pli.
+- 4b→4c : droite directe (pas forcément parallèle à 4→5).
+- La languette s'appuie toujours sur la crémaillère qui porte réellement la marche suivante (la
+  première rencontrée depuis le nez, côté jour comme côté mur) : la seconde crémaillère d'un
+  enchaînement s'arrête au coin et ne monte jamais assez haut pour tenir le panneau.
+- Le panneau de contremarche reprend exactement 4b (jour) et 4c (mur) ; les pré-perçages sont
+  centrés sur son épaisseur (à `ep_contremarche / 2` de la face de la languette).
 
-Entre les points 5 et 6, insertion de la languette d'appui pour la contremarche (déjà
-implémentée côté `tab_ends`/`add_tab`/`contremarche_offset` ; ce tracé documente comment elle se
-raccorde au reste du contour) :
+### État de l'implémentation (octobre 2026, non commité)
 
-```
-Sans contremarche :              Avec contremarche (zoom sur le segment 5→6) :
+Le code n'applique pas encore l'algorithme ci-dessus tel quel :
 
-      4                                   4
-       ╲                                   ╲
-        ╲                                   ╲
-         5                                   5 ── 5a  (prolonge de 1 mm, dans l'axe 4→5
-         │                                        │    - le jeu `JEU_LIMON`)
-         │                                        │
-         │                                        │ (a) bifurque 90°, parallèle à la face
-         │                                        │     intérieure de la crémaillère vide,
-         6                                        │     sur ép. contremarche + 5 mm
-                                                   5b
-                                                   │
-                                                   │ (b) bifurque 90° en sens inverse, vers
-                                                   │     la crémaillère mur, arrêtée à 1 mm
-                                                   │     de contact (jeu)
-                                                   5c
-                                                   │
-                                                   │ (c) bifurque 90°, parallèle à la
-                                                   │     crémaillère mur, jusqu'à l'abscisse
-                                                   │     du point 6
-                                                   5d ── 6   (5d, 6 et 1/6bis alignés)
-```
+- Le contour est construit en deux temps : le rectangle de base en L (`base_rect`, déjà décalé
+  des débords : `JRd`/`JRa`/`WR`) est coupé par la ligne de nez de la marche, ce qui produit le
+  nez et la partie du parcours 1→6 / 2→3 qui longe les arêtes extérieures, coins compris ; puis
+  `tread_back_path` repart des bouts de la ligne **arrière** (`LINES[m]`, le nez de la marche
+  suivante) pour trouver 3, 4, 5, 6. C'est équivalent dans l'enchaînement 1 et dans
+  l'enchaînement 2 tant que le coin est franchi avant `LINES[m]`.
+- Les autres cas sont mal couverts : `chain_cote` (passage sur la seconde crémaillère quand le
+  palier touche la fin réelle de la première) n'est qu'une approximation — constaté faux côté mur
+  avec `--long-arrivee 115` (marche 7 : point posé dans le jeu au mur, coin non suivi) ; et quand
+  la crémaillère déduite du point 2 n'a pas de palier à cette hauteur (`--long-depart 125`,
+  marche 3), on retombe sur l'ancien tracé à diagonale simple, où la marche chevauche `int_haut`
+  plus haut qu'elle.
+- Les débords ne sont pas une étape séparée : ils sont intégrés d'emblée via `JRd`/`JRa`/`WR`.
 
-### Écarté : tracé par demi-plans sur la géométrie globale de la marche
+### Écarté
 
-Première tentative : reconstruire ce contour par intersection de demi-plans (côté centroïde de
-la marche, borné par la projection sur la perpendiculaire au nez) puis union des morceaux.
-Fonctionnait sur des cas isolés mais s'est révélé non robuste sur le modèle réel : les demi-plans
-utilisés (`x ≥ WL`, etc.) ne distinguent pas « juste à côté de la crémaillère » de « loin de
-l'autre côté, sans rapport » quand ils partagent le même axe que le bord du nez d'une marche
-voisine — un retrait censé ne concerner que le coin « vide » coupait alors aussi, par erreur, le
-bord de nez côté opposé (`LINES[m-1]`), produisant des marches tronquées ou flottantes
-(régression constatée visuellement sur le rendu PDF). Écarté au profit du tracé explicite
-ci-dessus, qui suit le vrai profil de chaque crémaillère plutôt que des demi-plans plats.
+- **Tracé par demi-plans sur la géométrie globale de la marche** (première tentative) : les
+  demi-plans (`x ≥ WL`, etc.) ne distinguent pas « juste à côté de la crémaillère » de « loin de
+  l'autre côté » quand ils partagent l'axe du nez d'une marche voisine — marches tronquées ou
+  flottantes constatées sur le PDF.
+- **Ancienne définition point par point** (points 1 et 2 pris sur `LINES[m]`, variantes « double
+  contact » 3bis/6bis décrites séparément) : remplacée par l'algorithme unique ci-dessus.
+- **Chaîner deux crémaillères dès que les deux ont un palier à la hauteur de la marche** :
+  déclenchait des points parasites (marches 4 de la config par défaut, 5 et 6 de la config
+  ci-dessus) ; seule la rencontre d'une fin réelle de crémaillère sur le parcours justifie de
+  bifurquer. Le même test filtré par `backed` pile au bord du palier n'est pas fiable non plus (le
+  test point-dans-polygone est ambigu sur le bord).
+- **Plafonner la profondeur de languette par l'écart entre deux paliers consécutifs** de `PAL` :
+  cet écart (~0,05 cm) n'est que le pas d'échantillonnage de `steps()`, pas une limite réelle ;
+  le plafond tombait à zéro sur presque toutes les marches.
+- **Supprimer la languette dès qu'un enchaînement de crémaillères est détecté**, ou retomber alors
+  sur l'ancienne méthode par recherche (`contremarche_offset`) : ce recul uniforme le long de la
+  normale du nez laisse un triangle non couvert (panneau en retrait côté mur, juste côté jour).
 
 ## Crémaillères
 
@@ -196,8 +173,8 @@ Principe retenu, entièrement démontable/posable après la construction de l'es
   et vissé par en dessous (accès par l'espace ouvert sous les crémaillères) à trois
   pré-perçages — deux proches des bords, un au centre.
 - **Profondeur de pose** : le panneau est en retrait du pli de chacune des deux crémaillères
-  qu'il touche, d'au moins son épaisseur plus 0,5 cm, davantage si besoin près d'un coin (voir
-  *Écarté : panneau calé exactement sur le pli* ci-dessous). Un jeu de 0,1 cm de chaque côté par
+  qu'il touche, de son épaisseur plus 0,5 cm, indépendamment de chaque côté (voir « Languette de
+  contremarche » plus haut et *Écarté : panneau calé exactement sur le pli* ci-dessous). Un jeu de 0,1 cm de chaque côté par
   rapport aux faces des crémaillères évite tout contact chant-contre-bois.
 - **Languette de marche** : pour que le panneau ainsi reculé garde un appui plein, la marche du
   dessous reçoit un débord supplémentaire vers l'arrière, uniquement dans la largeur comprise

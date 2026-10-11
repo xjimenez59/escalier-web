@@ -351,7 +351,7 @@ def build_pdf(E, path):
                     for z in zz:
                         X0, Y0_ = T(X(d), z); c.setFillColor(NEZ); c.circle(X0, Y0_, 1.6, stroke=0, fill=1)
                 if E.ancrage_chevetre(k):
-                    b = E.CR[k]['rng'][1]
+                    b = E.CR[k].rng[1]
                     for z in E.TIGES:
                         line(c, T, (X(b), z), (X(b-E.P.ancrage+2.5), z), NEZ, 1.0, (2, 1.5))
                         X0, Y0_ = T(X(b-E.P.ancrage+2.5), z); c.setFillColor(NEZ); c.rect(X0-1.5, Y0_-2, 3, 4, stroke=0, fill=1)
