@@ -141,15 +141,13 @@ def pieces3d(E, seg=1e6, eps_z=0.0):
     for k, (O, A, tdir) in defs.items():
         faces += prism_faces(E.OUT[k], O, A, (0, 0, 1), v_mul(tdir, TH), CR, seg=seg)
     # contremarches (panneaux verticaux pleins, partie visible seulement)
+    # contour en plan : coins arrière a, b, coins avant fb, fa (bouts biseautés compris), extrudé
+    # sur la hauteur du panneau, comme les marches
     for r in E.RISERS.values():
-        a, b = r['a'], r['b']; Lr = math.dist(a, b)
-        if Lr <= 0: continue
         z_bas, z_haut = r['z_bas']+eps_z, r['z_haut']-eps_z
         if z_haut <= z_bas: continue
-        uxr = ((b[0]-a[0])/Lr, (b[1]-a[1])/Lr); nrmr = (-uxr[1], uxr[0])
-        rect = [(0, 0), (Lr, 0), (Lr, z_haut-z_bas), (0, z_haut-z_bas)]
-        faces += prism_faces(rect, W(a[0], a[1], z_bas), Wv(uxr[0], uxr[1], 0), (0, 0, 1),
-                              v_mul(Wv(nrmr[0], nrmr[1], 0), E.P.ep_contremarche), RISER, seg=seg)
+        pts = [W(x, y, 0)[:2] for x, y in (r['a'], r['b'], r['fb'], r['fa'])]
+        faces += prism_faces(pts, (0, 0, z_bas), (1, 0, 0), (0, 1, 0), (0, 0, z_haut-z_bas), RISER, seg=seg)
     # poteau et bastaing de soutien. Le poteau est un prisme simple (carré, pas de contour non
     # convexe) et une de ses faces touche exactement celle de la crémaillère intérieure
     # (boulonnées ensemble) : jamais de subdivision (seg très large, quel que soit `seg` demandé)

@@ -4,7 +4,7 @@ import zipfile
 import pytest
 
 from app import escalier, export3d
-from app.geometrie import pip
+from app.geometrie import pip, JEU_RAINURE
 from app.modele3d import scene, solide
 from app.web import app
 
@@ -165,6 +165,67 @@ def test_alerte_palier_saute():
     E = escalier.Escalier(escalier.parse_args(["--long-depart", "125"]))
     assert any("aucun palier pour la marche 3" in a for a in E.alertes)
     assert not any("aucun palier" in a for a in escalier.Escalier(escalier.parse_args([])).alertes)
+
+
+def contremarches_dans_le_bois(E, pas=0.15, marge=0.05):
+    """Points des contremarches (quadrilatère en plan, à mi-hauteur) situés dans le bois d'une crémaillère."""
+    zones = {'mur_dep': (0, E.WL, 0, E.Y0), 'mur_arr': (E.WL, E.XE, 0, E.WL),
+             'int_bas': (E.INx, E.JXx, E.INy, E.Y0), 'int_haut': (E.JXx, E.XE, E.INy, E.JXy)}
+    out = []
+    for i, r in E.RISERS.items():
+        if i == E.n - 1: continue          # la dernière bute contre le chevêtre
+        quad = [r['a'], r['b'], r['fb'], r['fa']]; zm = (r['z_bas'] + r['z_haut'])/2
+        xs = [p[0] for p in quad]; ys = [p[1] for p in quad]
+        x = min(xs)
+        while x <= max(xs):
+            y = min(ys)
+            while y <= max(ys):
+                if pip((x, y), quad):
+                    for k, (x0, x1, y0, y1) in zones.items():
+                        if x0+marge < x < x1-marge and y0+marge < y < y1-marge and E.backed(k, (x, y), zm):
+                            out.append((i, k, round(x, 2), round(y, 2)))
+                y += pas
+            x += pas
+    return out
+
+
+@pytest.mark.parametrize("args", [[], ["--sens", "gauche"], ["--long-arrivee", "115"], ["--largeur-depart", "95"],
+                                  CONFIG_UTILISATEUR, CONFIG_UTILISATEUR + ["--long-arrivee", "115"]])
+def test_contremarches_hors_du_bois_des_cremailleres(args):
+    E = escalier.Escalier(escalier.parse_args(args + ["--ep-contremarche", "1.2"]))
+    assert contremarches_dans_le_bois(E) == []
+
+
+def test_contremarches_biseau_au_bon_bout():
+    # bouts placés d'après la face avant (visible quand on monte) : biseau sur la face arrière, côté jour dans la
+    # volée de départ, côté mur dans la volée d'arrivée ; volées droites d'équerre et inchangées
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2"]))
+    biseaux = {i: [c for c, _, _ in E.riser_biseaux(i)] for i in E.RISERS}
+    assert biseaux[3] == ['jour']
+    assert all(biseaux[i] == ['mur'] for i in range(6, 11))
+    assert all(biseaux[i] == [] for i in (0, 1, 2, 4, 5, 11, 12, 13, 14))
+    longueur = lambda i: E.riser_local(i)[0]
+    assert all(abs(longueur(i) - longueur(0)) < 0.01 for i in (1, 2, 11, 12, 13, 14))
+    assert abs(E.riser_biseaux(6)[0][2] - 44.7) < 0.1
+    # deux crémaillères perpendiculaires qui se rapprochent vers l'avant : les deux bouts
+    E2 = escalier.Escalier(escalier.parse_args(["--long-arrivee", "115", "--ep-contremarche", "1.2"]))
+    assert sorted(c for c, _, _ in E2.riser_biseaux(8)) == ['jour', 'mur']
+
+
+@pytest.mark.parametrize("args", [[], ["--sens", "gauche"]])
+def test_rainure_couvre_l_epaisseur_de_la_contremarche(args):
+    # la rainure sous la marche du dessus couvre toute l'épaisseur du panneau, face avant comprise (Y de la fiche de
+    # marche = distance à sa ligne de nez) ; dans une volée droite, elle a exactement l'épaisseur plus le jeu
+    E = escalier.Escalier(escalier.parse_args(args + ["--ep-contremarche", "1.2"]))
+    for m in range(2, E.n - 1):
+        r = E.RISERS[m-1]
+        ys = [g[1] for g in E.tread_local(m)[3]]
+        milieu = lambda p, q: ((p[0]+q[0])/2, (p[1]+q[1])/2)
+        y_av, y_ar = E.sdist(milieu(r['fa'], r['fb']), m-1), E.sdist(milieu(r['a'], r['b']), m-1)
+        assert min(ys) <= min(y_av, y_ar) + 1e-6 and max(ys) >= max(y_av, y_ar) - 1e-6
+    for m in (2, E.n - 2):
+        ys = [g[1] for g in E.tread_local(m)[3]]
+        assert abs(max(ys) - min(ys) - (E.P.ep_contremarche + JEU_RAINURE)) < 1e-6
 
 
 def test_rainure_trop_profonde_alerte():

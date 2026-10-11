@@ -537,8 +537,8 @@ class Escalier:
         return [pa_e, pa_i, jonction, pe, q], pe, q, kB
 
     def contour_marche(self, m, trace=None):
-        """Contour de la marche m (CONCEPTION.md, « Bord arrière des marches ») et sa languette
-        de contremarche (points 4a..4d, ou None) : nez de 1 à 2, parcours côté jour jusqu'aux
+        """Contour de la marche m (CONCEPTION.md, « Bord arrière des marches »), sa languette
+        de contremarche (points 4a..4d, ou None) et les crémaillères qui la portent (mur, jour) : nez de 1 à 2, parcours côté jour jusqu'aux
         points 3 et 4, languette ou droite directe jusqu'au point 5, parcours côté mur à rebours
         par le point 6 jusqu'au point 1."""
         jour_nez, mur_nez = self.LINES[m-1]
@@ -551,7 +551,7 @@ class Escalier:
         if trace is not None:
             trace.append("Points : " + " ; ".join(f"{i} = {fpt(p)}" for i, p in
                                                   ((1, mur_nez), (2, jour_nez), (3, p3), (4, p4), (5, p5), (6, p6))))
-        return clean([mur_nez] + bout + cj + (list(lang) if lang else []) + cm[::-1]), lang
+        return clean([mur_nez] + bout + cj + (list(lang) if lang else []) + cm[::-1]), lang, (km, kj)
 
     def pointe_jour(self, m, p1, p2, suivant, trace=None):
         """Bout du nez côté jour (point 2), recoupé si besoin : la marche ne dépasse pas de plus que
@@ -584,12 +584,12 @@ class Escalier:
 
     # --- marches
     def marches(self):
-        n = self.n; self.TREADS = {}; self.notes = {}; self.LANG = {}
+        n = self.n; self.TREADS = {}; self.notes = {}; self.LANG = {}; self.LANG_CLES = {}
         ep = self.P.ep_contremarche
         for m in range(1, n):
-            poly, lang = self.contour_marche(m)
+            poly, lang, cles = self.contour_marche(m)
             note = []
-            if lang is not None: self.LANG[m] = lang
+            if lang is not None: self.LANG[m] = lang; self.LANG_CLES[m] = cles
             elif ep > 0 and m <= n-2:
                 note.append("Pas assez de place entre les crémaillères pour prolonger la marche sous la contremarche.")
             # marche dont le nez est sur la volée de départ et qui longe la crémaillère haute :
@@ -895,9 +895,10 @@ class Escalier:
 
     def contremarches(self):
         """Panneaux de contremarche : RISERS[i] relie le niveau i (0 = sol) au niveau i+1 (n =
-        chevêtre). Pour i = 1..n-2, posé sur la languette de la marche i (LANG[i], points 4b côté
-        jour et 4c côté mur). Sinon (sol, chevêtre, marche sans languette) : position cherchée le
-        long de la ligne de nez LINES[i] (contremarche_offset), avec JEU_LIMON de chaque côté."""
+        chevêtre). Pour i = 1..n-2, posé sur la languette de la marche i (LANG[i] : sa face arrière
+        sur la droite 4c-4b) ; sinon (sol, chevêtre, marche sans languette), face arrière cherchée le
+        long de la ligne de nez LINES[i] (contremarche_offset). Les bouts sont ensuite calculés par
+        `bouts_contremarche`, d'après les coins avant (face visible quand on monte)."""
         P = self.P; self.RISERS = {}
         if P.ep_contremarche <= 0: return
         if P.profondeur_rainure > 0.5*P.ep_marche:
@@ -906,40 +907,99 @@ class Escalier:
         n = self.n
         for i in range(n):
             if i in self.LANG:
-                b_in, b, a, a_in = self.LANG[i]   # 4a, 4b, 4c, 4d
+                _, b, a, _ = self.LANG[i]   # 4b (jour), 4c (mur) : face arrière
+                km, kj = self.LANG_CLES[i]
             else:
                 back = self.contremarche_offset(i) if i <= n-2 else 0.0
                 if back is None: continue
                 p0, nr = self.line_normal(i)
                 seg = self.riser_pair(p0, nr, back)
                 if seg is None: continue
-                (mur, _), (jour, _) = seg
-                a, b = mur, jour; L = math.dist(a, b)
-                if L <= 2*JEU_LIMON + 1: continue
-                a_in, b_in = a, b
-                ux = ((b[0]-a[0])/L, (b[1]-a[1])/L)
-                a = (a[0]+ux[0]*JEU_LIMON, a[1]+ux[1]*JEU_LIMON); b = (b[0]-ux[0]*JEU_LIMON, b[1]-ux[1]*JEU_LIMON)
+                (a, km), (b, kj) = seg
+            if math.dist(a, b) <= 2*JEU_LIMON + 1: continue
+            bouts = self.bouts_contremarche(a, b, km, kj, i*self.h - self.EP)
+            if bouts is None: continue
             z_bas = i*self.h if i >= 1 else 0.0
             z_haut = (i+1)*self.h - self.EP if i+1 <= n-1 else self.P.hauteur
-            self.RISERS[i] = dict(a=a, b=b, a_in=a_in, b_in=b_in, z_bas=z_bas, z_haut=z_haut,
+            self.RISERS[i] = dict(bouts, cle_mur=km, cle_jour=kj, z_bas=z_bas, z_haut=z_haut,
                                   rainure=(1 <= i <= n-2), percage=(i >= 1))
         missing = [i for i in range(n) if i not in self.RISERS]
         if missing:
             self.alertes.append(f"Contremarche(s) {', '.join(str(i) for i in missing)} non calculée(s) "
                                 "(zone trop étroite près du tournant).")
 
+    def bouts_contremarche(self, a, b, km, kj, z):
+        """Bouts d'une contremarche dont la face arrière est sur la droite a (côté mur) - b (côté
+        jour), la face avant (visible quand on monte) à ep_contremarche devant, posée sur une
+        marche à la hauteur z (CONCEPTION.md, « Contremarches »). Les deux coins avant sont au jeu (JEU_LIMON) de la face de leur
+        crémaillère, ou de la coupe de son pli quand le panneau la longe presque (avant le pli, la
+        crémaillère est sous la marche, donc sous le panneau). À chaque bout, un bout d'équerre convient si le coin arrière reste alors hors
+        du bois ; sinon le bout est biseauté sur la face arrière, de l'angle de biais du panneau,
+        son coin arrière étant lui aussi au jeu. Le plus souvent un seul bout, parfois aucun ; les
+        deux seulement entre deux crémaillères perpendiculaires qui se rapprochent vers l'avant.
+        Renvoie a, b (coins arrière), fa, fb (coins avant), biseau_a, biseau_b (degrés, 0 si
+        d'équerre) et les pré-perçages (`trous`, en plan, au milieu de l'épaisseur ; `trous_x`,
+        distances depuis le coin avant côté mur), ou None si le panneau est parallèle à une face."""
+        ep = self.P.ep_contremarche
+        L = math.dist(a, b); u = ((b[0]-a[0])/L, (b[1]-a[1])/L); nv = (-u[1], u[0])
+        av = (a[0]+nv[0]*ep, a[1]+nv[1]*ep)
+
+        def bois(p0, k):
+            """Intervalle des abscisses t (le long de u, depuis p0) où la droite p0 + t·u est dans le
+            bois de la crémaillère `k` à hauteur du panneau, jeu compris : au-delà de sa face et
+            au-delà de son pli (là où elle remonte vers la marche du dessus ; en deçà, elle est sous
+            la marche du dessous, donc sous le panneau)."""
+            cr = self.CR[k]
+            s_ = -1 if k in ('mur_dep', 'mur_arr') else 1      # bois du côté des coordonnées < ou > la face
+            conds = [(s_*u[cr.axe], s_*(p0[cr.axe] - cr.face_c) + JEU_LIMON)]
+            d_pli = self.montee(k, cr.rng[0], cr.rng[1], z)
+            if d_pli is not None:
+                conds.append((cr.sens*u[1-cr.axe], cr.d_of(p0) - d_pli + JEU_LIMON))
+            def intervalle(cs):
+                lo, hi = -math.inf, math.inf
+                for beta, alpha in cs:                          # alpha + beta·t >= 0
+                    if abs(beta) < 1e-12:
+                        if alpha < 0: return None
+                    elif beta > 0: lo = max(lo, -alpha/beta)
+                    else: hi = min(hi, -alpha/beta)
+                return (lo, hi) if lo <= hi else None
+            # la droite peut aussi passer juste à côté du coin du bois (face et pli) sans le toucher :
+            # on retient alors la face seule
+            return intervalle(conds) or intervalle(conds[:1])
+        Im, Fm, Ij, Fj = bois(a, km), bois(av, km), bois(a, kj), bois(av, kj)
+        if None in (Im, Fm, Ij, Fj) or not all(math.isfinite(t) for t in (Im[1], Fm[1], Ij[0], Fj[0])): return None
+        # côté mur, le panneau est vers les t croissants : limite = sortie du bois ; côté jour, entrée
+        tBm, tFm, tBj, tFj = Im[1], Fm[1], Ij[0], Fj[0]
+        tbm = max(tFm, tBm); tbj = min(tFj, tBj)      # coins arrière : d'équerre si possible
+        biseau = lambda dt: math.degrees(math.atan2(dt, ep)) if dt > 1e-6 else 0.0
+        pt = lambda o, t: (o[0]+u[0]*t, o[1]+u[1]*t)
+        mil_m, mil_j = (tFm+tbm)/2, (tFj+tbj)/2
+        trous_t = [mil_m + x for x in self.hole_positions(mil_j - mil_m)]
+        return dict(a=pt(a, tbm), b=pt(a, tbj), fa=pt(av, tFm), fb=pt(av, tFj),
+                    biseau_a=biseau(tBm - tFm), biseau_b=biseau(tFj - tBj),
+                    trous=[pt((a[0]+nv[0]*ep/2, a[1]+nv[1]*ep/2), t) for t in trous_t],
+                    trous_x=[t - tFm for t in trous_t])
+
     def riser_local(self, i):
-        """Contremarche i vue de face côté escalier : largeur, hauteur visible, hauteur totale
-        (avec la partie engagée dans la rainure), et pré-perçages (distances depuis le bord
-        gauche)."""
-        r = self.RISERS[i]; a, b = r['a'], r['b']
-        wallpt = self.LINES[i][1]
-        if math.dist(b, wallpt) < math.dist(a, wallpt): a, b = b, a
-        L = math.dist(a, b); H = r['z_haut']-r['z_bas']
+        """Contremarche i vue de face côté escalier : longueur de la face avant (longueur de débit),
+        hauteur visible, hauteur totale (avec la partie engagée dans la rainure) et pré-perçages
+        (distances depuis le bord gauche de la face avant)."""
+        r = self.RISERS[i]
+        L = math.dist(r['fa'], r['fb']); H = r['z_haut']-r['z_bas']
         Htot = H + (self.P.profondeur_rainure if r['rainure'] else 0.0)
-        holes = self.hole_positions(L) if r['percage'] else []
+        holes = list(r['trous_x']) if r['percage'] else []
         if self.left: holes = [L-x for x in holes]
         return L, H, Htot, holes
+
+    def riser_biseaux(self, i):
+        """Bouts biseautés de la contremarche i : liste de (côté 'mur' ou 'jour', 'gauche' ou
+        'droite' sur sa fiche, angle en degrés)."""
+        r = self.RISERS[i]; out = []
+        for cote, ang in (('mur', r['biseau_a']), ('jour', r['biseau_b'])):
+            if ang > 0.05:
+                gauche = (cote == 'mur') != self.left
+                out.append((cote, 'gauche' if gauche else 'droite', ang))
+        return out
 
     # --- supports, boulons
     def supports(self):
@@ -1033,32 +1093,17 @@ class Escalier:
         if self.P.ep_contremarche > 0:
             rb = self.RISERS.get(m-1)
             if rb is not None and rb['rainure']:
-                ax, ay = tf(rb['a']); bx, by = tf(rb['b'])
-                hw = (self.P.ep_contremarche + JEU_RAINURE)/2
-                x0, x1 = (ax, bx) if ax <= bx else (bx, ax)
-                # borné à la largeur réelle du nez : la contremarche du dessous peut être un peu plus
-                # large que ce nez dans le tournant (lignes de nez successives non parallèles)
-                x0 = max(x0, 0.0); x1 = min(x1, L)
-                if x1 > x0: groove = [(x0, ay-hw), (x1, ay-hw), (x1, ay+hw), (x0, ay+hw)]
+                # empreinte du panneau (faces avant et arrière, bouts biseautés compris), élargie du
+                # jeu de la rainure, bornée à la largeur réelle du nez
+                a, b, fa, fb = rb['a'], rb['b'], rb['fa'], rb['fb']
+                L_ = math.dist(a, b); nv = (-(b[1]-a[1])/L_, (b[0]-a[0])/L_); j_ = JEU_RAINURE/2
+                q = [(a[0]-nv[0]*j_, a[1]-nv[1]*j_), (b[0]-nv[0]*j_, b[1]-nv[1]*j_),
+                     (fb[0]+nv[0]*j_, fb[1]+nv[1]*j_), (fa[0]+nv[0]*j_, fa[1]+nv[1]*j_)]
+                g = hp_clip(hp_clip([tf(p) for p in q], (0, 0), (1, 0)), (L, 0), (-1, 0))
+                if len(g) >= 3 and abs(area(g)) > 1e-3: groove = clean(g)
             ra = self.RISERS.get(m)
             if ra is not None:
-                La = math.dist(ra['a'], ra['b'])
-                for off in self.hole_positions(La):
-                    t = off/La
-                    wp = (ra['a'][0]+(ra['b'][0]-ra['a'][0])*t, ra['a'][1]+(ra['b'][1]-ra['a'][1])*t)
-                    # recule de la moitié de l'épaisseur de la contremarche vers l'arête intérieure
-                    # de la languette (a_in/b_in) : le panneau occupe, en profondeur, l'intervalle
-                    # [RECUL_CREMAILLERE, RECUL_CREMAILLERE + ep_contremarche] depuis le pli (son
-                    # arête avant est à l'arête extérieure de la languette, a/b) - la vis doit être
-                    # centrée sur cette épaisseur, pas collée à l'arête extérieure.
-                    wp_in = (ra['a_in'][0]+(ra['b_in'][0]-ra['a_in'][0])*t, ra['a_in'][1]+(ra['b_in'][1]-ra['a_in'][1])*t)
-                    dx, dy = wp_in[0]-wp[0], wp_in[1]-wp[1]
-                    dL = math.hypot(dx, dy)
-                    marge = self.P.ep_contremarche/2
-                    if dL > marge:
-                        wp = (wp[0]+dx/dL*marge, wp[1]+dy/dL*marge)
-                    hx, hy = tf(wp)
-                    holes.append((hx, hy))
+                holes = [tf(p) for p in ra['trous']]
         if self.left:
             # miroir : l'extrémité gauche du nez est alors côté jour
             xs_nose = [pts[i][0] for i in range(n_) if self.on_line(P_[i], m-1)]

@@ -70,7 +70,8 @@ Résumé rapide ci-dessous ; le détail complet (raisonnement, dimensions, **opt
 - **Contremarches** (optionnelles, `--ep-contremarche`) : engagées dans une rainure sous la marche du dessus,
   vissées par en dessous sur une languette ajoutée à l'arrière de la marche du dessous. Le panneau est en retrait
   du pli de chaque crémaillère (épaisseur + marge), jamais calé dessus — une pose en butée bord à bord y serait à
-  tolérance nulle (`CONCEPTION.md` explique pourquoi, avec les autres options écartées : feuillure dans la
+  tolérance nulle. Coins **avant** (face visible) au jeu des crémaillères, longueur de débit = face avant ;
+  un bout n'est biseauté (face arrière) que si un bout d'équerre entrerait dans le bois (`CONCEPTION.md` explique pourquoi, avec les autres options écartées : feuillure dans la
   crémaillère, biseau des chants, tasseau rapporté en principe général, vissage en façade).
 
 ## Méthode de travail attendue

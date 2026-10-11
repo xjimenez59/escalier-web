@@ -469,15 +469,24 @@ def build_pdf(E, path):
                 f"languette prévue à l'arrière de la marche du dessous (voir sa fiche) et s'y visse par-dessous, aux pré-perçages indiqués "
                 f"(points rouges). Le panneau est en retrait du pli des crémaillères (épaisseur plus {fr(RECUL_CREMAILLERE)} cm), avec un jeu "
                 f"de {fr(JEU_LIMON)} cm de chaque côté par rapport à leurs faces : au pli exact, le bois des crémaillères ne commence, côté "
-                f"marche du dessus, qu'à partir de ce pli, sans aucun appui sur l'épaisseur du panneau s'il y était posé directement.", st['p']))
+                f"marche du dessus, qu'à partir de ce pli, sans aucun appui sur l'épaisseur du panneau s'il y était posé directement. "
+                f"Dans le tournant, le panneau est en biais par rapport aux crémaillères : les deux arêtes de sa face avant, visible quand "
+                f"on monte, viennent au jeu des crémaillères, et un bout dont l'arête arrière buterait est biseauté sur sa face arrière "
+                f"(indiqué sur la fiche). Les jours qui restent à l'arrière des bouts ne se voient pas.", st['p']))
             rcells = []
             for i in sorted(E.RISERS):
                 L, H, Htot, holes = E.riser_local(i)
+                biseaux = E.riser_biseaux(i)
                 world = (-4, -4, L+4, Htot+4)
-                def draw_riser(c, T, s, L=L, H=H, Htot=Htot, holes=holes):
+                def draw_riser(c, T, s, L=L, H=H, Htot=Htot, holes=holes, biseaux=biseaux):
                     poly_path(c, T, [(0, Htot-H), (L, Htot-H), (L, Htot), (0, Htot)], fill=WOOD, stroke=INK, width=0.7)
                     if Htot > H:
                         poly_path(c, T, [(0, 0), (L, 0), (L, Htot-H), (0, Htot-H)], fill=BAND, stroke=INK, width=0.4, dash=(2, 2))
+                    # arête arrière d'un bout biseauté, vue par transparence
+                    for _, pos, ang in biseaux:
+                        dx = P.ep_contremarche*math.tan(math.radians(ang))
+                        x = dx if pos == 'gauche' else L-dx
+                        line(c, T, (x, 0), (x, Htot), NEZ, 0.6, (2, 1.5))
                     for hx in holes:
                         X0, Y0_ = T(hx, 0); c.setFillColor(NEZ); c.circle(X0, Y0_, 1.6, stroke=0, fill=1)
                     text(c, T, L/2, Htot+2.5, fr(L), 6.5, DIM)
@@ -491,8 +500,13 @@ def build_pdf(E, path):
                                 "face inférieure de la marche 1, contre lesquels visser la contremarche.")
                 elif i == E.n-1:
                     note.append("Haut à fixer contre la face du chevêtre selon la structure du plancher (pas de perçage calculé).")
+                for cote, pos, ang in biseaux:
+                    dx = P.ep_contremarche*math.tan(math.radians(ang))
+                    note.append(f"Bout côté {cote} (à {pos}) : biseau de {fr(ang)}° sur la face arrière, qui recule de {fr(dx)} cm "
+                                f"(pointillés rouges) ; y ajouter 1 à 2° de dépouille. La face avant, visible, garde la longueur indiquée.")
                 cell = [Paragraph(f"Contremarche {i}  <font size=7 color='#5d6874'>({niveau} → {haut})</font>", st['h3']), fig, Spacer(1, 2),
-                        Paragraph(f"Panneau {math.ceil(L)} × {math.ceil(Htot)} × {fr(P.ep_contremarche)} cm. " + " ".join(note), st['small'])]
+                        Paragraph(f"Panneau {math.ceil(L)} × {math.ceil(Htot)} × {fr(P.ep_contremarche)} cm (longueur de la face avant, "
+                                  f"{fr(L)} cm). " + " ".join(note), st['small'])]
                 rcells.append(cell)
             rgrid = [rcells[i:i+2] for i in range(0, len(rcells), 2)]
             if rgrid and len(rgrid[-1]) == 1: rgrid[-1].append("")

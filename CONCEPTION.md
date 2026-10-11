@@ -205,8 +205,25 @@ Principe retenu, entièrement démontable/posable après la construction de l'es
   pré-perçages — deux proches des bords, un au centre.
 - **Profondeur de pose** : le panneau est en retrait du pli de chacune des deux crémaillères
   qu'il touche, de son épaisseur plus 0,5 cm, indépendamment de chaque côté (voir « Languette de
-  contremarche » plus haut et *Écarté : panneau calé exactement sur le pli* ci-dessous). Un jeu de 0,1 cm de chaque côté par
-  rapport aux faces des crémaillères évite tout contact chant-contre-bois.
+  contremarche » plus haut et *Écarté : panneau calé exactement sur le pli* ci-dessous).
+- **Bouts du panneau** (`bouts_contremarche`, depuis la v1.4.1). Dans le tournant, le panneau est
+  en biais par rapport aux crémaillères (jusqu'à 45°) : un bout d'équerre placé d'après le coin
+  arrière faisait entrer le coin avant (le visible, quand on monte) jusqu'à 1 cm dans la
+  crémaillère à un bout, et laissait un triangle visible à l'autre. Règle retenue :
+  - les deux **coins avant** sont au jeu (0,1 cm) de leur crémaillère ; la longueur de débit est
+    celle de la face avant ;
+  - à chaque bout, le bout est **d'équerre** si le coin arrière reste alors hors du bois (le jour
+    à l'arrière ne se voit pas) ; sinon il est **biseauté sur la face arrière**, de l'angle de
+    biais, coin arrière lui aussi au jeu (ajouter 1 à 2° de dépouille à la coupe) ;
+  - le « bois » est délimité à la fois par la face de la crémaillère et par son pli (en deçà du
+    pli, la crémaillère est sous la marche du dessous, donc sous le panneau) ;
+  - en pratique (config par défaut) : biseau côté jour pour la contremarche 3, côté mur pour les
+    contremarches 6 à 10 (3 à 45°), aucun ailleurs ; les deux bouts seulement entre deux
+    crémaillères perpendiculaires qui se rapprochent vers l'avant (rare : volée d'arrivée courte,
+    `--long-arrivee 115`) ;
+  - la fixation se fait par la rainure et les vis du dessous, pas par les bouts : les jours à
+    l'arrière ne gênent rien. La rainure de la marche du dessus couvre toute l'empreinte du
+    panneau (faces avant et arrière, bouts biseautés compris).
 - **Languette de marche** : pour que le panneau ainsi reculé garde un appui plein, la marche du
   dessous reçoit un débord supplémentaire vers l'arrière, uniquement dans la largeur comprise
   entre les deux crémaillères (pas sur toute la largeur — à l'aplomb des crémaillères elles-
@@ -238,6 +255,9 @@ tailler un léger biseau à chaque bout pour qu'il affleure quand même le pli d
 malgré leur angle différent dans le tournant. Fonctionnait géométriquement, mais ajoutait une
 coupe non perpendiculaire à tracer et scier pour chaque panneau du tournant, pour un gain que le
 recul uniforme (plus simple, plus robuste à un changement de géométrie) obtient déjà.
+Le biseau est revenu en v1.4.1 sous une autre forme et pour une autre raison : non plus pour caler
+le panneau sur le pli, mais pour que le coin avant affleure la crémaillère, sur un seul bout au
+plus souvent et seulement là où un bout d'équerre entrerait dans le bois (« Bouts du panneau »).
 
 ### Écarté : feuillure dans l'épaisseur de la crémaillère
 
