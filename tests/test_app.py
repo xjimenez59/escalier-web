@@ -4,6 +4,7 @@ import zipfile
 import pytest
 
 from app import escalier, export3d
+from app.geometrie import pip
 from app.modele3d import scene, solide
 from app.web import app
 
@@ -79,6 +80,84 @@ def test_contremarches_une_par_hauteur():
         (_, mur_key), (_, jour_key) = E.riser_pair(p0, nr, back)
         assert E.backed(mur_key, r['a'], r['z_haut'])
         assert E.backed(jour_key, r['b'], r['z_haut'])
+
+
+CONFIG_UTILISATEUR = ["--sens", "gauche", "--hauteur", "249", "--long-depart", "200", "--long-arrivee", "255",
+                      "--tremie-largeur", "300", "--largeur-depart", "80", "--largeur-arrivee", "100"]
+
+
+def collisions(E, pas=1.0, marge=0.3):
+    """Points de chaque marche situés au-dessus d'une crémaillère plus haute que la marche (la marche
+    serait alors posée dans le bois de la crémaillère)."""
+    zones = {'mur_dep': (0, E.WL, 0, E.Y0), 'mur_arr': (E.WL, E.XE, 0, E.WL),
+             'int_bas': (E.INx, E.JXx, E.INy, E.Y0), 'int_haut': (E.JXx, E.XE, E.INy, E.JXy)}
+    out = []
+    for m, poly in E.TREADS.items():
+        z = m*E.h - E.EP
+        xs = [p[0] for p in poly]; ys = [p[1] for p in poly]
+        x = min(xs)
+        while x <= max(xs):
+            y = min(ys)
+            while y <= max(ys):
+                if pip((x, y), poly):
+                    for k, (x0, x1, y0, y1) in zones.items():
+                        if x0+marge < x < x1-marge and y0+marge < y < y1-marge and E.backed(k, (x, y), z+0.3):
+                            out.append((m, k, x, y))
+                y += pas
+            x += pas
+    return out
+
+
+@pytest.mark.parametrize("args", [[], ["--long-depart", "125"], ["--long-arrivee", "115"], ["--largeur-depart", "95"],
+                                  CONFIG_UTILISATEUR, CONFIG_UTILISATEUR + ["--long-arrivee", "115"],
+                                  CONFIG_UTILISATEUR + ["--debord-jour", "0"]])
+def test_aucune_marche_dans_une_cremaillere(args):
+    # y compris les cas de double contact près du coin (crémaillère qui remonte dans le carré du coin)
+    E = escalier.Escalier(escalier.parse_args(args))
+    assert collisions(E) == []
+
+
+def test_parcours_tourne_aux_coins():
+    E = escalier.Escalier(escalier.parse_args(CONFIG_UTILISATEUR))
+    # marche 5, côté jour : arête extérieure d'int_bas, coin, puis arête extérieure d'int_haut
+    assert (E.JRd, E.JRa) in [tuple(round(c, 9) for c in p) for p in E.TREADS[5]]
+    # marche 6, côté mur : mur de départ, coin de la pièce, puis mur d'arrivée
+    assert (E.WR, E.WR) in E.TREADS[6]
+    assert "on tourne au coin" in E.trace_marche(5)
+
+
+def test_ecretage_du_bout_de_cremaillere():
+    # le dernier palier d'int_bas (2,4 cm, dans le carré du coin) est supprimé : int_haut porte déjà
+    # les deux marches concernées ; la marche 3 n'a plus à le contourner
+    E = escalier.Escalier(escalier.parse_args(["--largeur-depart", "95"]))
+    assert 'int_bas' in E.ECRETE
+    assert len(E.TREADS[3]) == 7
+    # sans effet sur la config par défaut et celle de l'utilisateur
+    for args in ([], CONFIG_UTILISATEUR):
+        assert escalier.Escalier(escalier.parse_args(args)).ECRETE == {}
+
+
+@pytest.mark.parametrize("args", [[], ["--long-arrivee", "115"], CONFIG_UTILISATEUR])
+def test_pointe_cote_jour_limitee_au_recouvrement(args):
+    # le bout du nez côté jour ne dépasse pas la face avant de sa crémaillère de plus que le
+    # recouvrement, mesuré le long de celle-ci (sinon pointe de plus de 12 cm avec --long-arrivee 115)
+    assert "Pointe côté jour recoupée" in escalier.Escalier(escalier.parse_args(["--long-arrivee", "115"])).trace_marche(9)
+    E = escalier.Escalier(escalier.parse_args(args))
+    for m, poly in E.TREADS.items():
+        z = m*E.h - E.EP
+        for k in ('int_bas', 'int_haut'):
+            cr = E.CR[k]; o = E.JRd if k == 'int_bas' else E.JRa
+            seg = [s_ for s_ in E.PAL[k] if abs(s_[0] - z) < 1e-6]
+            pts = [p for p in poly if abs(p[cr.axe] - o) < 1e-6]
+            # seulement les vraies pointes : la ligne de coupe recoupe le nez (son autre bout est au-delà)
+            if seg and pts and cr.d_of(E.LINES[m-1][1]) > seg[0][1] - E.REC:
+                assert min(cr.d_of(p) for p in pts) >= seg[0][1] - E.REC - escalier.POINTE_MINI - 0.01
+
+
+def test_alerte_palier_saute():
+    E = escalier.Escalier(escalier.parse_args(["--long-depart", "125"]))
+    assert any("aucun palier pour la marche 3" in a for a in E.alertes)
+    assert not any("aucun palier" in a for a in escalier.Escalier(escalier.parse_args([])).alertes)
 
 
 def test_rainure_trop_profonde_alerte():

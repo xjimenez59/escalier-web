@@ -51,8 +51,11 @@ dur : tout à zéro), puis on les applique à la fin.
    m, `LINES[m-1]`) — 1 côté mur, 2 côté jour. Ce sont les seuls points connus d'emblée.
 2. **Points 6 et 3** : depuis le point 1 (resp. 2), suivre les **arêtes horizontales extérieures**
    jusqu'à rencontrer la première **arête verticale extérieure** ; c'est le point 6 (resp. 3).
-   Priorité à la prolongation directe ; on ne bifurque (sur un chant, ou sur l'arête d'une autre
-   crémaillère) que s'il n'y a pas de prolongation possible. Pas besoin de savoir à l'avance
+   Priorité à la prolongation directe : on continue tout droit tant que la crémaillère se
+   poursuit, même un peu au-delà du coin du L, et on ne bifurque (sur un chant, ou sur l'arête
+   d'une autre crémaillère) qu'à sa fin réelle. La crémaillère abordée après avoir tourné ne
+   porte la marche que si elle a un palier à sa hauteur ; sinon le parcours s'arrête dès son
+   début. Pas besoin de savoir à l'avance
    quelle crémaillère est « basse » ou « haute » ; quatre enchaînements sont possibles :
    1. départ > arête > arrivée — cas simple, le plus courant ;
    2. départ > arête > arête > arrivée — la crémaillère basse est collée à la face extérieure de
@@ -66,7 +69,38 @@ dur : tout à zéro), puis on les applique à la fin.
 5. **Débords** : on applique ensuite le débord côté jour (`debord_jour`, la marche dépasse de
    l'arête extérieure des crémaillères intérieures) et le jeu côté mur (`jeu_mur`, la marche
    s'arrête avant le mur).
+   Côté jour, le nez lui-même ne dépasse pas la face avant de la crémaillère qui porte la marche
+   (le début de son palier) de plus que le recouvrement, mesuré le long de cette crémaillère : sur
+   un nez très oblique (marches balancées d'un escalier raide), la pointe est recoupée d'équerre,
+   parallèlement à cette face (jusqu'à 12 cm de pointe en moins avec `--long-arrivee 115`, 1,6 cm
+   sur la marche 5 de la configuration ci-dessous). Pas de coupe en dessous de 1 cm (`POINTE_MINI`), qui ne
+   ferait qu'ajouter un trait de scie. Seulement quand il y a une vraie pointe, c'est-à-
+   dire quand la ligne de coupe recoupe le nez ; un nez qui rejoint le bord jour en angle obtus
+   n'est pas touché.
 6. **Languette** (si contremarche) : remplace la droite 4→5, voir ci-dessous.
+
+**Bout de crémaillère écrêté.** Quand le dernier palier d'une crémaillère de départ est
+entièrement dans le carré du coin (la bande où la crémaillère d'arrivée est collée contre elle) et
+que la crémaillère d'arrivée porte déjà la marche de ce palier et la précédente, ce palier est
+supprimé : la crémaillère finit au niveau de la marche précédente. Il n'apportait presque rien
+(2,4 cm côté jour avec `--largeur-depart 95`, 1,35 cm côté mur avec `--long-depart 125`) et
+obligeait la marche précédente à le contourner. Règle appliquée au profil des crémaillères
+(`ecreter_bouts`), donc aussi à leurs développés et tracés dans le PDF, et des deux côtés pour
+rester une règle unique.
+
+**Double contact.** Quand cet écrêtage ne s'applique pas et que la crémaillère de départ remonte dans la bande où celle d'arrivée est
+collée contre elle (le « carré du coin »), la marche porte sur les deux : le contour suit les deux
+remontées. Côté jour (la crémaillère d'arrivée est collée à la face extérieure de celle de
+départ) : on tourne au coin, on suit la crémaillère d'arrivée jusqu'à sa remontée, puis on revient
+le long de la jonction des deux jusqu'à la remontée de la crémaillère de départ (encoche autour
+de son bout). Côté mur (la crémaillère d'arrivée bute contre la face intérieure de celle de
+départ) : remontée de la crémaillère de départ, puis le long de la jonction jusqu'au mur
+d'arrivée, puis la crémaillère d'arrivée jusqu'à sa remontée.
+
+**Limite.** Si une ligne de nez longe une crémaillère de trop près (moins que le recouvrement),
+cette crémaillère saute un palier : elle passe directement de la marche précédente à la suivante
+et aucune règle de tracé ne peut fermer le vide entre les deux (cas `--long-depart 125`, marche 3).
+Une alerte le signale ; il faut revoir le balancement ou les longueurs.
 
 Exception : la **dernière marche** n'a pas d'arête montante au-dessus d'elle (pas de marche
 suivante) ; son arrière est fixé par le chevêtre.
@@ -95,23 +129,15 @@ Entre les points 4 et 5, pour que le panneau reculé au-delà du pli garde un ap
 - Le panneau de contremarche reprend exactement 4b (jour) et 4c (mur) ; les pré-perçages sont
   centrés sur son épaisseur (à `ep_contremarche / 2` de la face de la languette).
 
-### État de l'implémentation (octobre 2026, non commité)
+### Implémentation
 
-Le code n'applique pas encore l'algorithme ci-dessus tel quel :
-
-- Le contour est construit en deux temps : le rectangle de base en L (`base_rect`, déjà décalé
-  des débords : `JRd`/`JRa`/`WR`) est coupé par la ligne de nez de la marche, ce qui produit le
-  nez et la partie du parcours 1→6 / 2→3 qui longe les arêtes extérieures, coins compris ; puis
-  `tread_back_path` repart des bouts de la ligne **arrière** (`LINES[m]`, le nez de la marche
-  suivante) pour trouver 3, 4, 5, 6. C'est équivalent dans l'enchaînement 1 et dans
-  l'enchaînement 2 tant que le coin est franchi avant `LINES[m]`.
-- Les autres cas sont mal couverts : `chain_cote` (passage sur la seconde crémaillère quand le
-  palier touche la fin réelle de la première) n'est qu'une approximation — constaté faux côté mur
-  avec `--long-arrivee 115` (marche 7 : point posé dans le jeu au mur, coin non suivi) ; et quand
-  la crémaillère déduite du point 2 n'a pas de palier à cette hauteur (`--long-depart 125`,
-  marche 3), on retombe sur l'ancien tracé à diagonale simple, où la marche chevauche `int_haut`
-  plus haut qu'elle.
-- Les débords ne sont pas une étape séparée : ils sont intégrés d'emblée via `JRd`/`JRa`/`WR`.
+`Escalier.parcours` (un côté) et `Escalier.contour_marche` (le contour complet, avec la
+languette) appliquent cet algorithme ; le parcours se fait sur les arêtes réelles et les points
+trouvés sont reportés sur les arêtes décalées du débord (`JRd`/`JRa`) ou du jeu (`WR`), ce qui
+revient à appliquer les débords à la fin. `python -m app.escalier --trace-marche N …` affiche le
+détail du parcours d'une marche (arêtes suivies, coins, points 1 à 6). Un test vérifie qu'aucune
+marche ne passe dans le bois d'une crémaillère plus haute qu'elle, sur plusieurs configurations
+limites (l'ancien tracé le faisait dans 5 des 13 configurations essayées).
 
 ### Écarté
 
@@ -119,8 +145,13 @@ Le code n'applique pas encore l'algorithme ci-dessus tel quel :
   demi-plans (`x ≥ WL`, etc.) ne distinguent pas « juste à côté de la crémaillère » de « loin de
   l'autre côté » quand ils partagent l'axe du nez d'une marche voisine — marches tronquées ou
   flottantes constatées sur le PDF.
-- **Ancienne définition point par point** (points 1 et 2 pris sur `LINES[m]`, variantes « double
-  contact » 3bis/6bis décrites séparément) : remplacée par l'algorithme unique ci-dessus.
+- **Ancienne définition point par point** (points 1 et 2 pris sur `LINES[m]`, la ligne de nez de
+  la marche suivante, le reste venant de la découpe d'un rectangle en L ; variantes « double
+  contact » 3bis/6bis décrites séparément, et repli sur une diagonale à profondeur constante dans
+  les cas non prévus) : remplacée par l'algorithme unique ci-dessus.
+- **Tourner au coin du L plutôt qu'à la fin réelle de la crémaillère** : une crémaillère qui
+  remonte quelques dixièmes de millimètre après le coin était alors ignorée, et la marche passait
+  dans son bois.
 - **Chaîner deux crémaillères dès que les deux ont un palier à la hauteur de la marche** :
   déclenchait des points parasites (marches 4 de la config par défaut, 5 et 6 de la config
   ci-dessus) ; seule la rencontre d'une fin réelle de crémaillère sur le parcours justifie de

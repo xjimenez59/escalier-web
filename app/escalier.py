@@ -13,19 +13,31 @@ Exemple :
         --long-depart 160 --long-arrivee 260 --tremie-largeur 100 \
         --balancement 3 11 --ep-cremaillere 4.5 --ep-marche 4 -o escalier.pdf
 
+Mise au point : ajouter `--trace-marche N` affiche le détail du tracé de la marche N (parcours
+des arêtes, points 1 à 6) au lieu de produire le PDF.
+
 Toutes les cotes sont en centimètres.
 """
 import sys
 
-from .geometrie import EscalierErreur, Escalier, parse_args, fr
+from .geometrie import EscalierErreur, Escalier, parse_args, fr, POINTE_MINI
 from .pdf import build_pdf
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # --trace-marche N : affiche le détail du tracé de la marche N (mise au point), sans produire
+    # le PDF ; option de la seule ligne de commande, pas un paramètre de l'escalier
+    trace = None
+    if "--trace-marche" in argv:
+        i = argv.index("--trace-marche"); trace = int(argv[i+1]); del argv[i:i+2]
     P = parse_args(argv)
     try:
         E = Escalier(P)
     except EscalierErreur as e:
         sys.exit(str(e))
+    if trace is not None:
+        print(E.trace_marche(trace))
+        return
     build_pdf(E, P.sortie)
     print(f"{P.sortie} : {E.n} hauteurs de {E.h:.2f} cm, giron {E.g:.2f} cm, 2h+g = {E.blondel:.1f}, "
           f"échappée {E.echappee:.1f} cm")

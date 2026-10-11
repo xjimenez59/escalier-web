@@ -25,7 +25,7 @@ Projet personnel d'un particulier qui construit l'escalier de son atelier. **On 
 - `app/rendu3d.py` : rendu de la vue 3D dans le PDF (projection + algorithme du peintre), à partir de `scene(E)`.
 - `app/export3d.py` : sérialise `modele3d.solide(E)` en JSON (visionneuse Three.js, route `/3d`) et en
   Wavefront OBJ+MTL (export `.zip` pour SweetHome3D/SketchUp, route `/export3d.zip`). Aucune dépendance.
-- `app/escalier.py` : point d'entrée en ligne de commande (`python -m app.escalier --help`) ; réexporte
+- `app/escalier.py` : point d'entrée en ligne de commande (`python -m app.escalier --help` ; `--trace-marche N` détaille le tracé d'une marche) ; réexporte
   `Escalier`, `parse_args`, `EscalierErreur`, `build_pdf` pour `app/web.py` et les tests.
 - `app/web.py` : formulaire (liste `GROUPES` : nom, libellé, type, bornes, pas, aide) ; route `POST /` qui
   renvoie le PDF, `GET /3d` (visionneuse) et `GET /export3d.zip` (export) qui acceptent les mêmes paramètres
