@@ -681,7 +681,7 @@ class Escalier:
             self.rives_droites()
         last_top = (self.n-1)*self.h - self.EP
         self.talon_ok = last_top <= self.CHEV + 1e-6
-        if not self.talon_ok:
+        if not self.talon_ok and self.P.fixation_haut == "talon":
             self.alertes.append("Le dernier palier est plus haut que le dessous du chevêtre : le talon d'appui est impossible, "
                                 "prévoir une platine métallique.")
 

@@ -154,6 +154,13 @@ def test_pointe_cote_jour_limitee_au_recouvrement(args):
                 assert min(cr.d_of(p) for p in pts) >= seg[0][1] - E.REC - escalier.POINTE_MINI - 0.01
 
 
+def test_alerte_talon_seulement_en_fixation_talon():
+    # dernier palier plus haut que le dessous du chevêtre : sans objet avec la fixation sur la face du chevêtre
+    alerte = lambda a: any("talon d'appui est impossible" in t for t in escalier.Escalier(escalier.parse_args(a)).alertes)
+    assert not alerte(CONFIG_UTILISATEUR)
+    assert alerte(CONFIG_UTILISATEUR + ["--fixation-haut", "talon"])
+
+
 def test_alerte_palier_saute():
     E = escalier.Escalier(escalier.parse_args(["--long-depart", "125"]))
     assert any("aucun palier pour la marche 3" in a for a in E.alertes)
