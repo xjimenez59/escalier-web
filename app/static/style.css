@@ -19,3 +19,14 @@ button { font: inherit; font-weight: 600; padding: .7rem 1.4rem; border: 0; bord
 button:hover { filter: brightness(1.08); }
 .erreurs { border: 1px solid var(--err); color: var(--err); border-radius: 6px; padding: .5rem 1rem; }
 footer { margin-top: 2rem; font-size: .8rem; color: var(--muted); }
+
+details.replie { margin: 1.25rem 0; }
+details.replie > summary { cursor: pointer; font-weight: 600; padding: .4rem 0; }
+details.replie > fieldset { margin-top: .4rem; }
+.table-cnc { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .92rem; }
+.table-cnc th, .table-cnc td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.table-cnc td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-cnc .hors { color: var(--muted); }
+.table-scroll { overflow-x: auto; }
+.alertes { border: 1px solid var(--accent); border-radius: 6px; padding: .5rem 1rem; }
+a.bouton { display: inline-block; font-weight: 600; padding: .7rem 1.4rem; border-radius: 4px; background: var(--accent); color: #fff; text-decoration: none; margin: .3rem .5rem .3rem 0; }

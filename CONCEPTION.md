@@ -284,3 +284,50 @@ limon.
   proches des bords, un au centre — la pointe des chaussures tape souvent le milieu de la
   contremarche, qui bénéficie donc de sa propre fixation plutôt que de ne compter que sur les
   deux extrémités.
+
+## Fabrication à la CNC (`app/cnc.py`)
+
+Machine : WorkBee 1510 sous GRBL (zone utile d'environ 82,4 × 128 cm, course Z 7,6 cm), broche pilotée en S.
+Pas de M6 ni de cycles fixes (GRBL n'en a pas) : un fichier G-code par pièce et par outil, l'utilisateur
+change la fraise et refait le zéro Z entre deux fichiers.
+
+- **La CNC ne découpe pas les pièces : elle les trace.** Elle fraise ce qui est difficile à la main (rainure
+  de contremarche, pré-trous des vis) et **grave** le contour de chaque pièce (fraise à graver en V, 0,4 mm),
+  que l'utilisateur scie ensuite (scie circulaire, sauteuse, ruban, égoïne) en laissant le trait, avant de
+  raboter ou poncer jusqu'au trait. Tous les contours sont des polygones droits, donc sciables.
+  *Écarté : découpe traversante à la CNC.* Marches de 40 mm et crémaillères de 45 mm : une fraise longue
+  (50 mm de coupe, plus de 60 €) tirée en saignée pleine fatigue la machine et l'outil, exige des passes de
+  3 mm (6 h 30 pour les marches) et un décalage du rayon de fraise dans tous les angles (angles rentrants
+  qui reçoivent une autre pièce, détails plus petits que la fraise). À reconsidérer seulement si un prestataire
+  peut la faire à un prix raisonnable.
+- **Pièce posée dessous vers le haut** (marche : face qui porte la rainure et les pré-trous, donc cachée ;
+  contremarche : face arrière ; crémaillère : face côté marches). Un seul bridage, un seul zéro : rainure,
+  trous et trait sont dans le même repère à quelques centièmes près, sans recalage après retournement
+  (*écarté : tracer sur la face opposée*). Le trait tombe sur la face cachée, ce qui place aussi l'éclatement
+  d'une scie circulaire à main ou d'une sauteuse (coupe face visible vers le bas) du côté caché. Pour une
+  scie sur table ou une égoïne, l'éclatement est côté visible : scotch de peintre sur cette face.
+- **Marche retournée = miroir de la fiche** (le projet a déjà eu une inversion) : X' = largeur − X ; si elle ne
+  tient pas dans le sens de la fiche, rotation de 90° en plus. Tests : sens de parcours inversé, distances
+  conservées, trou de gauche sur la fiche à droite sur la machine, escalier à droite et à gauche.
+- **Rainure** (fraise Ø 6 mm bout plat, 2 dents, hélice montante) : poche en allers-retours parallèles aux
+  grands côtés (pas de 0,6 × D), passes de 0,5 × D, entrée en rampe de 3°. Les bouts sont prolongés d'une fois
+  et demie le rayon de la fraise : le panneau entre jusqu'au fond, les angles arrondis par la fraise tombent
+  hors de son empreinte (sous la marche, au-dessus de la crémaillère), et le biais du tournant (jusqu'à 45°)
+  n'y laisse pas de pointe de bois.
+- **Pré-trous** : borgnes (la contremarche ne doit pas être traversée par les vis), de Ø 3,5 mm pour des vis
+  de 5 mm. Avec une seconde fraise de 3 mm : interpolation hélicoïdale ; sinon, simples points gravés à percer
+  à la main.
+- **Avances** : avance = tr/min × dents × charge par dent, plafonnée à l'avance maxi XY (2500 mm/min conseillés
+  pour une WorkBee), broche au plus bas régime utile (12 000 tr/min). Avec 2 dents plutôt qu'une : l'avance
+  réelle est bien inférieure au plafond, la charge par dent reste dans la fourchette, la coupe est plus
+  régulière. Tableau des charges par dent par matériau (CNC Router Store, Amana Tool, Engineers Edge) : ordre de
+  grandeur, à ajuster à l'oreille (poussière : trop faible ; éclats : trop forte).
+- **Pièces hors de la zone utile** (marche 6, crémaillères `mur_dep`, `mur_arr`, `int_haut`) : aucun fichier,
+  signalées dans le récapitulatif et le guide ; à tracer à la main d'après les fiches du PDF. Les tronçons recalés
+  sur un rail de trous dans le martyr sont envisagés plus tard (une erreur de 0,5 mm sur un trait est sans
+  conséquence).
+- **Hors CNC** : boulons du poteau (traversent 45 mm, seulement pointés), tiges M10 en bout et mortaises, vis
+  dans le chant du bas des contremarches, poteau d'angle.
+- **Interface** : groupe de paramètres replié dans le formulaire, page de récapitulatif `/cnc` (pièces, durée
+  estimée, alertes) puis `/gcode.zip` (fichiers + `GUIDE_FRAISAGE.txt`) ; ligne de commande `--gcode DOSSIER`.
+  Les alertes ne sont pas visibles dans un zip téléchargé : d'où la page de récapitulatif.

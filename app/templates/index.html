@@ -22,8 +22,9 @@
 
   <form method="post" target="_blank">
     {% for titre, champs in groupes %}
+    {% if 'CNC' in titre %}<details class="replie"><summary>{{ titre }}</summary>{% endif %}
     <fieldset>
-      <legend>{{ titre }}</legend>
+      {% if 'CNC' not in titre %}<legend>{{ titre }}</legend>{% endif %}
       <div class="champs">
       {% for nom, libelle, typ, a, b, pas, aide in champs %}
         <label>
@@ -40,10 +41,11 @@
       {% endfor %}
       </div>
     </fieldset>
+    {% if 'CNC' in titre %}</details>{% endif %}
     {% endfor %}
     <button type="submit">Générer le PDF</button>
     <button type="submit" formmethod="get" formaction="/3d" target="_blank">Voir en 3D</button>
-    <button type="submit" formmethod="get" formaction="/export3d.zip" target="_blank">Exporter le modèle 3D (.obj, pour SweetHome3D / SketchUp)</button>
+    <button type="submit" formmethod="get" formaction="/cnc" target="_blank">Fabrication CNC (récapitulatif et G-code)</button>
   </form>
   <footer>Version {{ version }}</footer>
 </main>

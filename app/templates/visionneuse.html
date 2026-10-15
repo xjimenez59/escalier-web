@@ -18,6 +18,7 @@
   .barre a { color: var(--accent); text-decoration: none; font-weight: 600; }
   .barre a:hover { text-decoration: underline; }
   .barre span { color: var(--muted); font-size: .9rem; }
+  .barre .telechargement { margin-left: auto; }
   #viewer { position: fixed; inset: 0; top: 48px; }
   canvas { display: block; }
 </style>
@@ -26,6 +27,7 @@
 <div class="barre">
   <a href="/">&larr; Retour au formulaire</a>
   <span>Escalier — vue 3D (orbiter : glisser la souris ; zoomer : molette)</span>
+  <a class="telechargement" href="/export3d.zip?{{ requete }}">Télécharger le modèle (.obj, pour SweetHome3D / SketchUp)</a>
 </div>
 <div id="viewer"></div>
 <script type="module">

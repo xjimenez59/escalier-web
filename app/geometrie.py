@@ -65,6 +65,23 @@ def parse_args(argv=None):
     a("--ep-contremarche", type=float, default=0.0, help="épaisseur des contremarches (0 = pas de contremarches)")
     a("--profondeur-rainure", type=float, default=0.8,
       help="profondeur de la rainure creusée dans la face inférieure de la marche du dessus, qui reçoit le haut de la contremarche")
+    # Fabrication CNC (app/cnc.py) : réglages de la machine et des fraises, en mm, mm/min et tr/min
+    # (unités d'usage en CNC), contrairement aux cotes de l'escalier en cm.
+    a("--cnc-zone-x", type=float, default=824.0, help="CNC : zone utile en X (mm)")
+    a("--cnc-zone-y", type=float, default=1280.0, help="CNC : zone utile en Y (mm)")
+    a("--cnc-avance-max", type=float, default=2500.0, help="CNC : avance maxi en XY (mm/min)")
+    a("--cnc-broche-min", type=float, default=10000.0, help="CNC : vitesse de broche mini (tr/min)")
+    a("--cnc-broche-max", type=float, default=30000.0, help="CNC : vitesse de broche maxi (tr/min)")
+    a("--cnc-materiau", choices=["resineux", "feuillu_tendre", "feuillu_dur", "contreplaque", "mdf"], default="resineux",
+      help="CNC : matériau (sert aux avances)")
+    a("--cnc-fraise-diam", type=float, default=6.0, help="CNC : diamètre de la fraise principale, bout plat (mm)")
+    a("--cnc-fraise-dents", type=int, default=2, help="CNC : nombre de dents de la fraise principale")
+    a("--cnc-fraise-coupe", type=float, default=22.0, help="CNC : longueur de coupe de la fraise principale (mm)")
+    a("--cnc-fraise-trous", choices=["non", "oui"], default="non",
+      help="CNC : une fraise de 3 mm pour percer les pré-trous ('non' : ils sont seulement pointés, à percer à la main)")
+    a("--cnc-diam-trou", type=float, default=3.5, help="CNC : diamètre des pré-trous de vis des contremarches (mm)")
+    a("--cnc-prof-trou", type=float, default=30.0, help="CNC : profondeur des pré-trous, depuis le dessous de la marche (mm)")
+    a("--cnc-prof-gravure", type=float, default=0.4, help="CNC : profondeur de la gravure des contours (mm)")
     a("-o", "--sortie", default="escalier_quart_tournant.pdf", help="fichier PDF produit")
     return p.parse_args(argv)
 

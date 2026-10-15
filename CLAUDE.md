@@ -25,12 +25,17 @@ Projet personnel d'un particulier qui construit l'escalier de son atelier. **On 
 - `app/rendu3d.py` : rendu de la vue 3D dans le PDF (projection + algorithme du peintre), à partir de `scene(E)`.
 - `app/export3d.py` : sérialise `modele3d.solide(E)` en JSON (visionneuse Three.js, route `/3d`) et en
   Wavefront OBJ+MTL (export `.zip` pour SweetHome3D/SketchUp, route `/export3d.zip`). Aucune dépendance.
-- `app/escalier.py` : point d'entrée en ligne de commande (`python -m app.escalier --help` ; `--trace-marche N` détaille le tracé d'une marche) ; réexporte
+- `app/cnc.py` : fabrication à la CNC (WorkBee, GRBL), sans dépendance. `plan_cnc(E)` → `Plan` (pièces,
+  programmes G-code par pièce et par outil, alertes, durée) ; `zip_cnc(plan, E)` ; `guide_fraisage(plan, E)`.
+  Les pièces sont **gravées** (contour à scier à la main) et fraisées pour la rainure et les pré-trous, **pas
+  découpées**. Unités machine : mm, mm/min, tr/min (paramètres `cnc_*`). Pièces posées dessous vers le haut.
+- `app/escalier.py` : point d'entrée en ligne de commande (`python -m app.escalier --help` ; `--trace-marche N` détaille le tracé d'une marche ; `--gcode DOSSIER` écrit les fichiers G-code et le guide de fraisage) ; réexporte
   `Escalier`, `parse_args`, `EscalierErreur`, `build_pdf` pour `app/web.py` et les tests.
 - `app/web.py` : formulaire (liste `GROUPES` : nom, libellé, type, bornes, pas, aide) ; route `POST /` qui
-  renvoie le PDF, `GET /3d` (visionneuse) et `GET /export3d.zip` (export) qui acceptent les mêmes paramètres
-  en query string (`lire_formulaire` fonctionne avec `request.form` ou `request.args` indifféremment).
+  renvoie le PDF, `GET /3d` (visionneuse), `GET /export3d.zip` (export), `GET /cnc` (récapitulatif de la fabrication
+  CNC) et `GET /gcode.zip` (fichiers G-code + guide) qui acceptent les mêmes paramètres en query string (`lire_formulaire` fonctionne avec `request.form` ou `request.args` indifféremment).
   Tout nouveau paramètre du moteur doit être ajouté à `parse_args` **et** à `GROUPES`.
+- `app/templates/cnc.html` : récapitulatif de la fabrication CNC (pièces, durée estimée, alertes, téléchargement).
 - `app/templates/visionneuse.html` : page de la visionneuse 3D interactive (Three.js vendorisé dans
   `app/static/vendor/three/`, aucune dépendance CDN — cohérent avec un déploiement sans accès internet garanti).
 - `tests/` : pytest. Les tests doivent passer avant tout commit (`python -m pytest -q`).
@@ -67,6 +72,8 @@ Résumé rapide ci-dessous ; le détail complet (raisonnement, dimensions, **opt
 - Haut de la crémaillère intérieure : elle **monte jusqu'au plancher** sur 10 cm et se fixe sur la face du chevêtre
   par 2 tiges M10 (la marche du haut est entaillée). L'ancien « talon » sous le chevêtre était suspendu : à éviter.
 - Bois prévu : bastaings de pin collés chant sur chant pour les crémaillères.
+- **CNC** : la CNC trace et ne découpe pas (gravure des contours, rainure et pré-trous fraisés), pièces posées
+  dessous vers le haut : voir `CONCEPTION.md`, « Fabrication à la CNC ». La découpe traversante a été écartée.
 - **Contremarches** (optionnelles, `--ep-contremarche`) : engagées dans une rainure sous la marche du dessus,
   vissées par en dessous sur une languette ajoutée à l'arrière de la marche du dessous. Le panneau est en retrait
   du pli de chaque crémaillère (épaisseur + marge), jamais calé dessus — une pose en butée bord à bord y serait à

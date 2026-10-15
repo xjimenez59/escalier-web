@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fabrication CNC : récapitulatif</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <h1>Fabrication à la CNC</h1>
+  <p class="intro">La CNC fait la rainure de contremarche et les pré-trous des marches, puis grave le contour de chaque
+  pièce ; tu scies ensuite d'après le trait. Un fichier G-code par pièce et par outil, plus le guide de fraisage.</p>
+
+  <p><strong>Durée de fraisage estimée : {{ duree(plan.duree_totale) }}</strong>
+     (sans la mise en place, environ 10 minutes par pièce).</p>
+
+  {% if plan.alertes %}
+  <div class="alertes" role="alert">
+    <ul>{% for a in plan.alertes %}<li>{{ a }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <p>
+    <a class="bouton" href="/gcode.zip?{{ requete }}">Télécharger les fichiers G-code et le guide (.zip)</a>
+    <a href="/">Retour au formulaire</a>
+  </p>
+
+  <div class="table-scroll">
+  <table class="table-cnc">
+    <thead><tr><th>Pièce</th><th class="num">Brut (mm)</th><th>Fichiers</th><th class="num">Durée</th></tr></thead>
+    <tbody>
+    {% for pc in plan.pieces %}
+      {% if pc.tient %}
+      <tr>
+        <td>{{ pc.titre|capitalize }}</td>
+        <td class="num">{{ pc.brut[0]|round|int }} × {{ pc.brut[1]|round|int }} × {{ pc.epaisseur|round|int }}</td>
+        <td>{% for g in pc.programmes %}{{ g.resume }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+        <td class="num">{{ duree(pc.programmes|sum(attribute='s')) }}</td>
+      </tr>
+      {% else %}
+      <tr class="hors">
+        <td>{{ pc.titre|capitalize }}</td>
+        <td class="num">{{ pc.brut[0]|round|int }} × {{ pc.brut[1]|round|int }} × {{ pc.epaisseur|round|int }}</td>
+        <td>hors de la zone utile : à tracer à la main d'après le PDF</td>
+        <td class="num">&ndash;</td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <footer>Version {{ version }}</footer>
+</main>
+</body>
+</html>

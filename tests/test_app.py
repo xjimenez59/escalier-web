@@ -3,8 +3,8 @@ import zipfile
 
 import pytest
 
-from app import escalier, export3d
-from app.geometrie import pip, JEU_RAINURE
+from app import cnc, escalier, export3d
+from app.geometrie import pip, JEU_RAINURE, area
 from app.modele3d import scene, solide
 from app.web import app
 
@@ -277,6 +277,12 @@ def test_get_3d(client):
     body = r.get_data(as_text=True)
     assert "OrbitControls" in body
     assert '"positions"' in body
+    assert "/export3d.zip?sens=gauche" in body       # le téléchargement du modèle est dans la visionneuse
+
+
+def test_formulaire_sans_bouton_export3d(client):
+    html = client.get("/").get_data(as_text=True)
+    assert "/3d" in html and "/export3d.zip" not in html
 
 
 def test_get_3d_contremarches(client):
@@ -332,3 +338,197 @@ def test_solide_sans_subdivision_ni_ecart():
     assert len(faces_exact) < len(faces_pdf)
     assert all(len(f) == 4 for f in faces_exact)  # jamais de plancher/chevêtre (slab)
     assert all(isinstance(f[2], str) and f[2].startswith("#") for f in faces_exact)
+
+
+# --- fabrication CNC (app/cnc.py) ------------------------------------------------------------------
+_PLANS = {}
+
+def plan_cnc(*args):
+    """Plan CNC mis en cache : le calcul de l'escalier est la partie lente."""
+    if args not in _PLANS:
+        E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "1.2", *args]))
+        _PLANS[args] = (E, cnc.plan_cnc(E))
+    return _PLANS[args]
+
+
+def test_groupes_et_parse_args_coherents():
+    from app.web import GROUPES
+    defauts = vars(escalier.parse_args([]))
+    for _, champs in GROUPES:
+        for nom, *_ in champs:
+            assert nom in defauts or nom in ("balancement_debut", "balancement_fin"), nom
+
+
+def test_cnc_reglages_formule_et_bornes():
+    P = escalier.parse_args([])
+    al = []
+    r = cnc.reglages(P, 6.0, 2, al, "fraise")
+    assert r.rpm == 12000 and r.dents == 2
+    assert abs(r.avance - r.rpm*r.dents*r.charge) < 1e-6          # avance = tr/min × dents × charge par dent
+    assert r.avance <= P.cnc_avance_max and r.plongee <= r.avance and r.passe == 3.0
+    assert al == []
+    P.cnc_avance_max = 500.0                                       # machine très lente : charge par dent trop faible
+    al = []
+    r = cnc.reglages(P, 6.0, 2, al, "fraise")
+    assert r.rpm == P.cnc_broche_min and r.avance == 500.0 and al
+
+
+@pytest.mark.parametrize("args", [[], ["--sens", "gauche"], ["--cnc-fraise-trous", "oui"]])
+def test_cnc_gcode_borne_a_la_piece(args):
+    E, plan = plan_cnc(*args)
+    P = E.P
+    assert any(g for pc in plan.pieces for g in pc.programmes)
+    for pc in plan.pieces:
+        for g in pc.programmes:
+            t = g.texte()
+            lignes = t.split("\n")
+            assert lignes[0].startswith('(') and "G21 G90 G17 G94" in lignes and lignes[-2] == "M30"
+            assert "M6" not in t and t.isascii()
+            assert f"T{g.no_outil}" in lignes and g.no_outil in (1, 2, 3)
+            s = [float(l.split('S')[1]) for l in lignes if l.startswith('M3 S')]
+            assert s and all(P.cnc_broche_min <= v <= P.cnc_broche_max for v in s)
+            assert g.avance_max <= P.cnc_avance_max + 1e-9
+            assert g.xmin >= -1e-6 and g.ymin >= -1e-6
+            assert g.xmax <= pc.brut[0] + 1e-6 and g.ymax <= pc.brut[1] + 1e-6
+            assert g.zmin >= -pc.epaisseur
+            assert g.s > 0
+
+
+def test_cnc_profondeurs():
+    E, plan = plan_cnc("--cnc-fraise-trous", "oui")
+    P = E.P
+    marche = {pc.nom: pc for pc in plan.pieces}["marche_02"]
+    prof = {g.outil.split(',')[0]: g.zmin for g in marche.programmes}
+    assert abs(prof["fraise de 6 mm"] + P.profondeur_rainure*10) < 1e-6
+    assert abs(prof["fraise de 3 mm"] + P.cnc_prof_trou) < 1e-6
+    assert abs(prof["fraise à graver en V"] + P.cnc_prof_gravure) < 1e-6
+
+
+@pytest.mark.parametrize("args", [[], ["--sens", "gauche"]])
+def test_cnc_marche_retournee(args):
+    """La marche est fraisée dessous vers le haut : miroir de la fiche (rotation de 90° éventuelle en plus)."""
+    E, plan = plan_cnc(*args)
+    vues = 0
+    for pc in plan.pieces:
+        if not pc.nom.startswith("marche_") or not pc.tient: continue
+        m = int(pc.nom[7:])
+        pts, _, _, groove, holes = E.tread_local(m)
+        assert area(pc.contour_machine)*area(pts) < 0           # retournée : sens de parcours inversé
+        if groove: assert area(pc.rainure_machine)*area(groove) < 0
+        assert len(pc.trous_machine) == len(holes)
+        # isométrie : les distances entre points sont conservées (en mm)
+        for (a, b), (A, B) in zip(zip(pts, pts[1:]), zip(pc.contour_machine, pc.contour_machine[1:])):
+            assert abs(10*((a[0]-b[0])**2+(a[1]-b[1])**2)**0.5 - ((A[0]-B[0])**2+(A[1]-B[1])**2)**0.5) < 1e-6
+        if not pc.tourne and len(holes) >= 2:                     # un trou à gauche sur la fiche est à droite sur la machine
+            i0 = min(range(len(holes)), key=lambda i: holes[i][0]); i1 = max(range(len(holes)), key=lambda i: holes[i][0])
+            assert pc.trous_machine[i0][0] > pc.trous_machine[i1][0]
+        vues += 1
+    assert vues >= 10
+
+
+def test_cnc_pieces_hors_zone():
+    E, plan = plan_cnc()
+    pieces = {pc.nom: pc for pc in plan.pieces}
+    assert not pieces["marche_06"].tient and not pieces["marche_06"].programmes and pieces["marche_06"].motif
+    assert not pieces["cremaillere_mur_arr"].tient
+    assert pieces["cremaillere_int_bas"].tient and pieces["bastaing"].tient
+    assert pieces["marche_05"].tourne                              # 118 cm : posée en travers dans la zone de 128 cm
+
+
+def test_cnc_gravure_contremarche_face_arriere():
+    E, plan = plan_cnc()
+    for pc in plan.pieces:
+        if not pc.nom.startswith("contremarche_") or not pc.tient: continue
+        r = E.RISERS[int(pc.nom[13:])]
+        xs = [p[0] for p in pc.contour_machine]; ys = [p[1] for p in pc.contour_machine]
+        long_, court = max(max(xs)-min(xs), max(ys)-min(ys)), min(max(xs)-min(xs), max(ys)-min(ys))
+        import math
+        assert abs(long_ - 10*math.dist(r['a'], r['b'])) < 1e-6    # trait = face arrière (plus courte que la face avant)
+        assert long_ <= 10*math.dist(r['fa'], r['fb']) + 1e-6
+
+
+def test_cnc_alerte_sans_contremarche_ni_rainure():
+    E = escalier.Escalier(escalier.parse_args([]))
+    plan = cnc.plan_cnc(E)
+    assert all('rainure' not in g.fichier for pc in plan.pieces for g in pc.programmes)
+
+
+def test_cnc_fraise_trop_large():
+    E = escalier.Escalier(escalier.parse_args(["--ep-contremarche", "0.8", "--cnc-fraise-diam", "10"]))
+    with pytest.raises(escalier.EscalierErreur):
+        cnc.plan_cnc(E)
+
+
+def test_cnc_guide_liste_les_fichiers_du_zip():
+    E, plan = plan_cnc()
+    guide = cnc.guide_fraisage(plan, E)
+    z = zipfile.ZipFile(cnc.zip_cnc(plan, E))
+    noms = z.namelist()
+    assert "GUIDE_FRAISAGE.txt" in noms
+    for n in noms:
+        if n.endswith(".nc"): assert n in guide
+    assert "Marche 6" in guide and "hors de la zone utile" in guide.lower()
+    assert "44.7°" in guide                                         # biseau de la contremarche 6
+
+
+def test_page_formulaire_cnc_repliee(client):
+    html = client.get("/").get_data(as_text=True)
+    assert "<details" in html and "cnc_fraise_diam" in html and "/cnc" in html
+
+
+def test_get_cnc_recapitulatif(client):
+    r = client.get("/cnc", query_string={"ep_contremarche": "1.2"})
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Durée de fraisage" in html and "Marche 2" in html and "/gcode.zip?" in html
+
+
+def test_get_gcode_zip(client):
+    r = client.get("/gcode.zip", query_string={"ep_contremarche": "1.2", "cnc_fraise_trous": "oui"})
+    assert r.status_code == 200 and r.mimetype == "application/zip"
+    noms = zipfile.ZipFile(io.BytesIO(r.data)).namelist()
+    assert "GUIDE_FRAISAGE.txt" in noms and any(n.startswith("marche_02_") and "trous" in n for n in noms)
+
+
+def test_cnc_erreurs_400(client):
+    assert client.get("/cnc", query_string={"cnc_fraise_diam": "50"}).status_code == 400
+    assert client.get("/gcode.zip", query_string={"balancement_debut": "8", "balancement_fin": "11"}).status_code == 400
+    r = client.get("/cnc", query_string={"ep_contremarche": "0.8", "cnc_fraise_diam": "10"})
+    assert r.status_code == 400 and "trop large" in r.get_data(as_text=True)
+
+
+def test_cnc_identification_gravee():
+    """Chaque pièce porte son identification, à l'intérieur de son contour, loin de la rainure et des trous."""
+    E, plan = plan_cnc("--cnc-fraise-trous", "oui")
+    attendu = {"marche_02": "M2", "contremarche_06": "C6", "cremaillere_int_bas": "IB", "bastaing": "B"}
+    pieces = {pc.nom: pc for pc in plan.pieces}
+    for nom, texte in attendu.items(): assert pieces[nom].etiquette == texte
+    for pc in plan.pieces:
+        if not pc.tient: continue
+        assert pc.etiquette and pc.traits_etiquette, pc.nom
+        for trait in pc.traits_etiquette:
+            for q in trait:
+                assert pip(q, pc.contour_machine) and cnc._dist_poly(q, pc.contour_machine) >= cnc.TEXTE_DEGAGE - 1e-6
+                if pc.rainure_machine: assert pip(q, pc.rainure_machine) is False and cnc._dist_poly(q, pc.rainure_machine) > 10
+                for t in pc.trous_machine: assert ((q[0]-t[0])**2 + (q[1]-t[1])**2) ** 0.5 > 10
+        gravure = [g for g in pc.programmes if g.fichier.endswith("gravure.nc")][0]
+        assert "identification" in gravure.resume
+        assert gravure.zmin >= -max(E.P.cnc_prof_gravure, cnc.POINTAGE)      # le pointage des trous est plus profond que la gravure
+
+
+def test_cnc_gravure_contour_de_la_rainure():
+    E, plan = plan_cnc()
+    pc = {p.nom: p for p in plan.pieces}["marche_04"]
+    assert pc.rainure_machine
+    gravure = [g for g in pc.programmes if g.fichier.endswith("gravure.nc")][0]
+    assert "rainure" in gravure.resume
+    texte = gravure.texte()
+    for x, y in pc.rainure_machine:                       # chaque coin de la rainure est un point de passage de la gravure
+        assert f"X{cnc.Programme._n(x)}" in texte or f"Y{cnc.Programme._n(y)}" in texte
+
+
+def test_cnc_glyphes_couvrent_les_identifications():
+    E, plan = plan_cnc()
+    for pc in plan.pieces:
+        assert all(c in cnc.GLYPHES for c in pc.etiquette)
+    assert all(c in cnc.GLYPHES for t in cnc.ETIQUETTES.values() for c in t) and "B" in cnc.GLYPHES
